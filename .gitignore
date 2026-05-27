@@ -22,3 +22,9 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+/services/gpt4free/venv
+/services/twitter-api-client/.venv
+/services/twscrape/.venv
+/services/twitter-api-client/session.py
+/services/twitter-api-client/__pycache__
+/services/twscrape/accounts.db
