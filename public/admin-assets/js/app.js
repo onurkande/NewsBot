@@ -520,20 +520,40 @@ function initShellBehaviors() {
   initMobileDrawer();
 }
 
+
 function initAlertDismissals() {
-  document.querySelectorAll('.alert .close').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const alert = btn.closest('.alert');
-      if (!alert) return;
-      alert.style.transition = 'opacity 180ms ease, transform 180ms ease';
+  document.querySelectorAll('.alert').forEach((alert) => {
+    if (alert.dataset.autodismissInitialized === '1') return;
+    alert.dataset.autodismissInitialized = '1';
+
+    const close = alert.querySelector('.close');
+
+    const fadeOut = () => {
+      if (!alert.isConnected) return;
+      alert.style.transition = 'opacity 220ms ease, transform 220ms ease';
       alert.style.opacity = '0';
       alert.style.transform = 'translateY(-6px)';
-      window.setTimeout(() => alert.remove(), 180);
-    });
+
+      window.setTimeout(() => {
+        if (alert.isConnected) {
+          alert.remove();
+        }
+      }, 220);
+    };
+
+    const timeoutId = window.setTimeout(fadeOut, 4500);
+
+    if (close) {
+      close.addEventListener('click', () => {
+        window.clearTimeout(timeoutId);
+        fadeOut();
+      });
+    }
   });
 }
 
-function initLiteTabs() {
+function initLiteTabs()
+ {
   document.querySelectorAll('.tabs').forEach((tabs) => {
     const items = Array.from(tabs.querySelectorAll('.tab'));
     if (!items.length) return;
@@ -556,7 +576,146 @@ function initModalDemo() {
   });
 }
 
+
+function initPersistentSelectionTables() {
+  document.querySelectorAll('[data-selection-key]').forEach((card) => {
+    const key = card.getAttribute('data-selection-key');
+    if (!key) return;
+
+    const storageKey = `dash26-selection:${key}`;
+    const table = card.querySelector('[data-selection-table]');
+    const master = card.querySelector('[data-master-checkbox]');
+    const selectedCount = card.querySelector('[data-selected-count]');
+    const bulkTrigger = card.querySelector('[data-bulk-delete-trigger]');
+    const bulkForm = card.querySelector('[data-bulk-delete-form]');
+    const bulkInputs = card.querySelector('[data-bulk-delete-inputs]');
+
+    if (!table) return;
+
+    const readSelection = () => {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+      } catch (error) {
+        return new Set();
+      }
+    };
+
+    const writeSelection = (selection) => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify([...selection]));
+      } catch (error) {
+        // ignore storage errors
+      }
+    };
+
+    let selection = readSelection();
+
+    const rowCheckboxes = () => Array.from(table.querySelectorAll('tbody [data-row-checkbox]'));
+
+    const syncRows = () => {
+      const boxes = rowCheckboxes();
+      let visibleSelected = 0;
+
+      boxes.forEach((box) => {
+        const rowId = String(box.getAttribute('data-row-id') || '');
+        const checked = selection.has(rowId);
+        box.checked = checked;
+
+        const row = box.closest('tr');
+        if (row) row.classList.toggle('is-selected', checked);
+
+        if (checked) visibleSelected += 1;
+      });
+
+      if (master) {
+        master.checked = boxes.length > 0 && visibleSelected === boxes.length;
+        master.indeterminate = visibleSelected > 0 && visibleSelected < boxes.length;
+      }
+
+      if (selectedCount) {
+        selectedCount.textContent = `${selection.size} seçili`;
+      }
+
+      if (bulkTrigger) {
+        bulkTrigger.disabled = selection.size === 0;
+      }
+    };
+
+    const persistAndSync = () => {
+      writeSelection(selection);
+      syncRows();
+    };
+
+    rowCheckboxes().forEach((box) => {
+      box.addEventListener('change', () => {
+        const rowId = String(box.getAttribute('data-row-id') || '');
+        if (!rowId) return;
+
+        if (box.checked) {
+          selection.add(rowId);
+        } else {
+          selection.delete(rowId);
+        }
+
+        persistAndSync();
+      });
+    });
+
+    if (master) {
+      master.addEventListener('change', () => {
+        rowCheckboxes().forEach((box) => {
+          const rowId = String(box.getAttribute('data-row-id') || '');
+          if (!rowId) return;
+
+          box.checked = master.checked;
+          if (master.checked) {
+            selection.add(rowId);
+          } else {
+            selection.delete(rowId);
+          }
+
+          const row = box.closest('tr');
+          if (row) row.classList.toggle('is-selected', master.checked);
+        });
+
+        persistAndSync();
+      });
+    }
+
+    if (bulkTrigger && bulkForm && bulkInputs) {
+      bulkTrigger.addEventListener('click', () => {
+        if (selection.size === 0) return;
+
+        const confirmed = window.confirm('Seçili kategoriler silinsin mi?');
+        if (!confirmed) return;
+
+        bulkInputs.innerHTML = '';
+        selection.forEach((id) => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'ids[]';
+          input.value = id;
+          bulkInputs.appendChild(input);
+        });
+
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (error) {
+          // ignore storage errors
+        }
+
+        bulkForm.submit();
+      });
+    }
+
+    syncRows();
+  });
+}
+
 function initExtraInteractions() {
+
   initAlertDismissals();
   initLiteTabs();
   initModalDemo();
@@ -991,7 +1150,7 @@ function buildDataTableRows() {
 }
 
 function initDataTables() {
-  document.querySelectorAll('.data-table').forEach((table) => {
+  document.querySelectorAll('[data-demo-datatable]').forEach((table) => {
     const host = table.closest('.card') || table.parentElement;
     const body = table.querySelector('tbody');
     if (!body) return;
