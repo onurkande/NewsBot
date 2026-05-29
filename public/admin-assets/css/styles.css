@@ -1168,6 +1168,52 @@ body.has-drawer-open .drawer-backdrop {
 .accordion-body-inner { padding: 0 16px 14px; }
 .accordion-item.is-open .accordion-body { max-height: 400px; }
 
+/* ---- Modal ---- */
+[data-modal] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0);
+  opacity: 0;
+  pointer-events: none;
+  transition: background 180ms ease, opacity 180ms ease;
+  z-index: 9999;
+}
+
+[data-modal]:not([hidden]) {
+  pointer-events: auto;
+}
+
+[data-modal].is-open {
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 1;
+}
+
+.modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  max-width: 480px;
+  width: 100%;
+  animation: modalPop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalPop {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 /* ---- Modal (static demo) ---- */
 .modal-demo {
   background: var(--bg-card);
