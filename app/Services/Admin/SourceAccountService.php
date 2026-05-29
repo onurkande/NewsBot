@@ -1,0 +1,75 @@
+<?php
+
+namespace App\Services\Admin;
+
+use App\Models\SourceAccount;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+
+class SourceAccountService
+{
+    public function create(array $data): SourceAccount
+    {
+        return DB::transaction(function () use ($data) {
+            return SourceAccount::create($this->normalize($data));
+        });
+    }
+
+    public function update(SourceAccount $account, array $data): SourceAccount
+    {
+        return DB::transaction(function () use ($account, $data) {
+            $account->update($this->normalize($data));
+
+            return $account->refresh();
+        });
+    }
+
+    public function delete(SourceAccount $account): void
+    {
+        DB::transaction(function () use ($account) {
+            $account->delete();
+        });
+    }
+
+    public function bulkDelete(array $ids): int
+    {
+        $ids = collect($ids)
+            ->flatten()
+            ->filter()
+            ->map(static fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        return (int) DB::transaction(function () use ($ids) {
+            return SourceAccount::query()
+                ->whereKey($ids)
+                ->delete();
+        });
+    }
+
+    private function normalize(array $data): array
+    {
+        return [
+            'username' => ltrim((string) Arr::get($data, 'username', ''), '@'),
+            'display_name' => $this->nullableTrim(Arr::get($data, 'display_name')),
+            'category_id' => Arr::get($data, 'category_id'),
+            'priority_score' => (int) Arr::get($data, 'priority_score', 50),
+            'trust_score' => (int) Arr::get($data, 'trust_score', 50),
+            'check_interval_minutes' => (int) Arr::get($data, 'check_interval_minutes', 15),
+            'is_active' => (bool) Arr::get($data, 'is_active', true),
+            'notes' => $this->nullableTrim(Arr::get($data, 'notes')),
+        ];
+    }
+
+    private function nullableTrim(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+}

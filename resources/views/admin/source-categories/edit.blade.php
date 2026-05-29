@@ -1,23 +1,26 @@
 @extends('admin.layouts.master')
 
-@section('title', 'Kategori Duzenle')
+@section('title', 'Kategori Düzenle')
 @section('active', 'source-categories')
-@section('crumbs', 'Haber Toplama | Kategori Duzenle')
+@section('crumbs', 'Haber Toplama | Kategori Düzenle')
 
 @section('content')
-    <section class="card">
-        <div class="card-head">
-            <div class="card-title-wrap">
-                <span class="eyebrow">Kaynak Kategorisi</span>
-                <h2 class="card-title">{{ $category->name }}</h2>
-            </div>
-        </div>
+    <x-admin.page-header
+        eyebrow="Haber Toplama"
+        title="{{ $category->name }}"
+        subtitle="Kategori bilgilerini güncelleyin."
+    >
+        <x-slot:actions>
+            <x-admin.button variant="secondary" :href="route('admin.source-categories.index')">Listeye dön</x-admin.button>
+        </x-slot:actions>
+    </x-admin.page-header>
 
-        @include('admin.partials.flash')
+    <x-admin.flash-message />
 
+    <x-admin.card eyebrow="Kaynak kategorisi" title="Düzenle">
         <form method="POST" action="{{ route('admin.source-categories.update', $category) }}">
             @method('PUT')
             @include('admin.source-categories._form')
         </form>
-    </section>
+    </x-admin.card>
 @endsection

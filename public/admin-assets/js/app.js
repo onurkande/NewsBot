@@ -520,40 +520,35 @@ function initShellBehaviors() {
   initMobileDrawer();
 }
 
-
 function initAlertDismissals() {
   document.querySelectorAll('.alert').forEach((alert) => {
-    if (alert.dataset.autodismissInitialized === '1') return;
-    alert.dataset.autodismissInitialized = '1';
+    const closeBtn = alert.querySelector('.close');
 
-    const close = alert.querySelector('.close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => dismissAlert(alert));
+    }
 
-    const fadeOut = () => {
-      if (!alert.isConnected) return;
-      alert.style.transition = 'opacity 220ms ease, transform 220ms ease';
-      alert.style.opacity = '0';
-      alert.style.transform = 'translateY(-6px)';
-
-      window.setTimeout(() => {
-        if (alert.isConnected) {
-          alert.remove();
-        }
-      }, 220);
-    };
-
-    const timeoutId = window.setTimeout(fadeOut, 4500);
-
-    if (close) {
-      close.addEventListener('click', () => {
-        window.clearTimeout(timeoutId);
-        fadeOut();
-      });
+    const autoDismiss = parseInt(alert.getAttribute('data-auto-dismiss') || '0', 10);
+    if (autoDismiss > 0) {
+      window.setTimeout(() => dismissAlert(alert), autoDismiss);
     }
   });
 }
 
-function initLiteTabs()
- {
+function dismissAlert(alert) {
+  if (!alert || alert.dataset.dismissed === '1') {
+    return;
+  }
+
+  alert.dataset.dismissed = '1';
+  alert.style.transition = 'opacity 180ms ease, transform 180ms ease';
+  alert.style.opacity = '0';
+  alert.style.transform = 'translateY(-6px)';
+
+  window.setTimeout(() => alert.remove(), 180);
+}
+
+function initLiteTabs() {
   document.querySelectorAll('.tabs').forEach((tabs) => {
     const items = Array.from(tabs.querySelectorAll('.tab'));
     if (!items.length) return;
@@ -577,149 +572,324 @@ function initModalDemo() {
 }
 
 
-function initPersistentSelectionTables() {
-  document.querySelectorAll('[data-selection-key]').forEach((card) => {
-    const key = card.getAttribute('data-selection-key');
-    if (!key) return;
 
-    const storageKey = `dash26-selection:${key}`;
-    const table = card.querySelector('[data-selection-table]');
-    const master = card.querySelector('[data-master-checkbox]');
-    const selectedCount = card.querySelector('[data-selected-count]');
-    const bulkTrigger = card.querySelector('[data-bulk-delete-trigger]');
-    const bulkForm = card.querySelector('[data-bulk-delete-form]');
-    const bulkInputs = card.querySelector('[data-bulk-delete-inputs]');
+function getSelectionStorageKey(selectionKey) {
+  return `admin-selection:${selectionKey}`;
+}
 
-    if (!table) return;
+function readSelectionSet(selectionKey) {
+  try {
+    const raw = window.sessionStorage.getItem(getSelectionStorageKey(selectionKey));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch (error) {
+    return new Set();
+  }
+}
 
-    const readSelection = () => {
-      try {
-        const raw = localStorage.getItem(storageKey);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
-      } catch (error) {
-        return new Set();
+function writeSelectionSet(selectionKey, set) {
+  try {
+    window.sessionStorage.setItem(getSelectionStorageKey(selectionKey), JSON.stringify(Array.from(set)));
+  } catch (error) {
+    // ignore storage failures
+  }
+}
+
+function initSelectionTables() {
+  const roots = Array.from(document.querySelectorAll('[data-selection-table]'));
+  if (!roots.length) {
+    return;
+  }
+
+  window.__adminSelectionStores = window.__adminSelectionStores || {};
+
+  roots.forEach((table) => {
+    const selectionKey = table.getAttribute('data-selection-key');
+    if (!selectionKey) {
+      return;
+    }
+
+    const store = readSelectionSet(selectionKey);
+    window.__adminSelectionStores[selectionKey] = store;
+
+    const card = table.closest('.card') || document;
+    const master = table.querySelector('[data-master-checkbox]');
+    const rowCheckboxes = Array.from(table.querySelectorAll('[data-row-checkbox]'));
+    const selectedCountBadge = card.querySelector(`[data-selected-count][data-selection-key="${selectionKey}"]`) || card.querySelector('[data-selected-count]');
+    const bulkTrigger = card.querySelector(`[data-bulk-delete-trigger][data-selection-key="${selectionKey}"]`) || card.querySelector('[data-bulk-delete-trigger]');
+    const bulkInputs = card.querySelector('[data-confirm-delete-inputs]');
+    const bulkLabel = bulkTrigger?.getAttribute('data-confirm-delete-title') || 'Seçili kayıtları sil';
+    const bulkMessage = bulkTrigger?.getAttribute('data-confirm-delete-message') || 'Seçili kayıtlar silinecek.';
+    const bulkUrl = bulkTrigger?.getAttribute('data-confirm-delete-url') || '';
+
+    const visibleIds = () => rowCheckboxes
+      .map((checkbox) => String(checkbox.getAttribute('data-row-id') || ''))
+      .filter(Boolean);
+
+    const syncRow = (checkbox) => {
+      const rowId = String(checkbox.getAttribute('data-row-id') || '');
+      const row = checkbox.closest('tr');
+      const checked = store.has(rowId);
+
+      checkbox.checked = checked;
+      if (row) {
+        row.classList.toggle('is-selected', checked);
       }
     };
 
-    const writeSelection = (selection) => {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify([...selection]));
-      } catch (error) {
-        // ignore storage errors
-      }
-    };
-
-    let selection = readSelection();
-
-    const rowCheckboxes = () => Array.from(table.querySelectorAll('tbody [data-row-checkbox]'));
-
-    const syncRows = () => {
-      const boxes = rowCheckboxes();
-      let visibleSelected = 0;
-
-      boxes.forEach((box) => {
-        const rowId = String(box.getAttribute('data-row-id') || '');
-        const checked = selection.has(rowId);
-        box.checked = checked;
-
-        const row = box.closest('tr');
-        if (row) row.classList.toggle('is-selected', checked);
-
-        if (checked) visibleSelected += 1;
-      });
-
-      if (master) {
-        master.checked = boxes.length > 0 && visibleSelected === boxes.length;
-        master.indeterminate = visibleSelected > 0 && visibleSelected < boxes.length;
-      }
-
-      if (selectedCount) {
-        selectedCount.textContent = `${selection.size} seçili`;
+    const updateBadge = () => {
+      const count = store.size;
+      if (selectedCountBadge) {
+        selectedCountBadge.textContent = `${count} seçili`;
       }
 
       if (bulkTrigger) {
-        bulkTrigger.disabled = selection.size === 0;
+        bulkTrigger.disabled = count === 0;
       }
     };
 
-    const persistAndSync = () => {
-      writeSelection(selection);
-      syncRows();
+    const syncMaster = () => {
+      if (!master) {
+        return;
+      }
+
+      const visible = rowCheckboxes.length;
+      const checkedVisible = rowCheckboxes.filter((checkbox) => store.has(String(checkbox.getAttribute('data-row-id') || ''))).length;
+
+      master.checked = visible > 0 && checkedVisible === visible;
+      master.indeterminate = checkedVisible > 0 && checkedVisible < visible;
     };
 
-    rowCheckboxes().forEach((box) => {
-      box.addEventListener('change', () => {
-        const rowId = String(box.getAttribute('data-row-id') || '');
-        if (!rowId) return;
+    const syncAll = () => {
+      rowCheckboxes.forEach(syncRow);
+      syncMaster();
+      updateBadge();
+      writeSelectionSet(selectionKey, store);
+    };
 
-        if (box.checked) {
-          selection.add(rowId);
-        } else {
-          selection.delete(rowId);
+    rowCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const rowId = String(checkbox.getAttribute('data-row-id') || '');
+        if (!rowId) {
+          return;
         }
 
-        persistAndSync();
+        if (checkbox.checked) {
+          store.add(rowId);
+        } else {
+          store.delete(rowId);
+        }
+
+        syncAll();
       });
     });
 
     if (master) {
       master.addEventListener('change', () => {
-        rowCheckboxes().forEach((box) => {
-          const rowId = String(box.getAttribute('data-row-id') || '');
-          if (!rowId) return;
-
-          box.checked = master.checked;
-          if (master.checked) {
-            selection.add(rowId);
-          } else {
-            selection.delete(rowId);
+        const checked = master.checked;
+        rowCheckboxes.forEach((checkbox) => {
+          const rowId = String(checkbox.getAttribute('data-row-id') || '');
+          if (!rowId) {
+            return;
           }
 
-          const row = box.closest('tr');
-          if (row) row.classList.toggle('is-selected', master.checked);
+          checkbox.checked = checked;
+
+          if (checked) {
+            store.add(rowId);
+          } else {
+            store.delete(rowId);
+          }
+
+          const row = checkbox.closest('tr');
+          if (row) {
+            row.classList.toggle('is-selected', checked);
+          }
         });
 
-        persistAndSync();
+        syncAll();
       });
     }
 
-    if (bulkTrigger && bulkForm && bulkInputs) {
+    if (bulkTrigger && bulkUrl) {
       bulkTrigger.addEventListener('click', () => {
-        if (selection.size === 0) return;
-
-        const confirmed = window.confirm('Seçili kategoriler silinsin mi?');
-        if (!confirmed) return;
-
-        bulkInputs.innerHTML = '';
-        selection.forEach((id) => {
-          const input = document.createElement('input');
-          input.type = 'hidden';
-          input.name = 'ids[]';
-          input.value = id;
-          bulkInputs.appendChild(input);
-        });
-
-        try {
-          localStorage.removeItem(storageKey);
-        } catch (error) {
-          // ignore storage errors
+        const modal = document.querySelector('[data-confirm-delete-modal]');
+        if (!modal) {
+          return;
         }
 
-        bulkForm.submit();
+        if (store.size === 0) {
+          return;
+        }
+
+        const form = modal.querySelector('[data-confirm-delete-form]');
+        const title = modal.querySelector('[data-confirm-delete-title]');
+        const message = modal.querySelector('[data-confirm-delete-message]');
+        const inputs = modal.querySelector('[data-confirm-delete-inputs]');
+
+        if (form) {
+          form.action = bulkUrl;
+        }
+
+        if (title) {
+          title.textContent = bulkLabel;
+        }
+
+        if (message) {
+          message.textContent = `${bulkMessage} (${store.size} kayıt)`;
+        }
+
+        if (inputs) {
+          inputs.innerHTML = '';
+          Array.from(store).forEach((id) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'selected[]';
+            input.value = id;
+            inputs.appendChild(input);
+          });
+        }
+
+        openConfirmModal(modal);
       });
     }
 
-    syncRows();
+    syncAll();
+  });
+
+  window.addEventListener('pageshow', () => {
+    document.querySelectorAll('[data-selection-table]').forEach((table) => {
+      const selectionKey = table.getAttribute('data-selection-key');
+      const store = window.__adminSelectionStores?.[selectionKey];
+      if (!store) {
+        return;
+      }
+
+      table.querySelectorAll('[data-row-checkbox]').forEach((checkbox) => {
+        const rowId = String(checkbox.getAttribute('data-row-id') || '');
+        const checked = store.has(rowId);
+        checkbox.checked = checked;
+        const row = checkbox.closest('tr');
+        if (row) {
+          row.classList.toggle('is-selected', checked);
+        }
+      });
+
+      const master = table.querySelector('[data-master-checkbox]');
+      if (master) {
+        const rowCheckboxes = Array.from(table.querySelectorAll('[data-row-checkbox]'));
+        const visible = rowCheckboxes.length;
+        const checkedVisible = rowCheckboxes.filter((checkbox) => store.has(String(checkbox.getAttribute('data-row-id') || ''))).length;
+        master.checked = visible > 0 && checkedVisible === visible;
+        master.indeterminate = checkedVisible > 0 && checkedVisible < visible;
+      }
+
+      const card = table.closest('.card') || document;
+      const selectedCountBadge = card.querySelector(`[data-selected-count][data-selection-key="${selectionKey}"]`) || card.querySelector('[data-selected-count]');
+      const bulkTrigger = card.querySelector(`[data-bulk-delete-trigger][data-selection-key="${selectionKey}"]`) || card.querySelector('[data-bulk-delete-trigger]');
+      if (selectedCountBadge) {
+        selectedCountBadge.textContent = `${store.size} seçili`;
+      }
+      if (bulkTrigger) {
+        bulkTrigger.disabled = store.size === 0;
+      }
+    });
   });
 }
 
-function initExtraInteractions() {
+function openConfirmModal(modal) {
+  modal.hidden = false;
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+}
 
+function closeConfirmModal(modal) {
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+  window.setTimeout(() => {
+    modal.hidden = true;
+  }, 180);
+}
+
+function initConfirmDeleteModal() {
+  const modal = document.querySelector('[data-confirm-delete-modal]');
+  if (!modal) {
+    return;
+  }
+
+  const form = modal.querySelector('[data-confirm-delete-form]');
+  const title = modal.querySelector('[data-confirm-delete-title]');
+  const message = modal.querySelector('[data-confirm-delete-message]');
+  const inputs = modal.querySelector('[data-confirm-delete-inputs]');
+
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-confirm-delete-trigger]');
+    if (trigger) {
+      event.preventDefault();
+
+      const url = trigger.getAttribute('data-confirm-delete-url') || '';
+      const label = trigger.getAttribute('data-confirm-delete-label') || '';
+      const modalTitle = trigger.getAttribute('data-confirm-delete-title') || 'Silme işlemini onayla';
+      const modalMessage = trigger.getAttribute('data-confirm-delete-message') || 'Bu işlem geri alınamaz.';
+
+      if (form && url) {
+        form.action = url;
+      }
+
+      if (title) {
+        title.textContent = modalTitle;
+      }
+
+      if (message) {
+        message.textContent = label ? `${modalMessage} (${label})` : modalMessage;
+      }
+
+      if (inputs && !trigger.hasAttribute('data-bulk-delete-trigger')) {
+        inputs.innerHTML = '';
+      }
+
+      openConfirmModal(modal);
+    }
+
+    if (event.target.closest('[data-modal-close]') || event.target === modal) {
+      closeConfirmModal(modal);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+      closeConfirmModal(modal);
+    }
+  });
+
+  if (form) {
+    form.addEventListener('submit', () => {
+      const bulkTrigger = document.querySelector('[data-bulk-delete-trigger][disabled="false"]');
+      if (bulkTrigger && !bulkTrigger.disabled && inputs) {
+        const selectionKey = bulkTrigger.getAttribute('data-selection-key');
+        const store = window.__adminSelectionStores?.[selectionKey];
+        if (store) {
+          inputs.innerHTML = '';
+          Array.from(store).forEach((id) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'selected[]';
+            input.value = id;
+            inputs.appendChild(input);
+          });
+        }
+      }
+    });
+  }
+}
+
+
+function initExtraInteractions() {
   initAlertDismissals();
   initLiteTabs();
   initModalDemo();
-  initDataTables();
+  initSelectionTables();
+  initConfirmDeleteModal();
   initCharts();
 }
 
@@ -1150,7 +1320,7 @@ function buildDataTableRows() {
 }
 
 function initDataTables() {
-  document.querySelectorAll('[data-demo-datatable]').forEach((table) => {
+  document.querySelectorAll('.data-table').forEach((table) => {
     const host = table.closest('.card') || table.parentElement;
     const body = table.querySelector('tbody');
     if (!body) return;

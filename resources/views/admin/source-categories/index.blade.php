@@ -1,218 +1,252 @@
 @extends('admin.layouts.master')
 
 @section('title', 'Kaynak Kategorileri')
-@section('active', 'source-categories')
+@section('active', $selectionKey)
 @section('crumbs', 'Haber Toplama | Kaynak Kategorileri')
 
 @section('content')
-    <section class="hero">
-        <div class="hero-text">
-            <span class="eyebrow">Haber Toplama</span>
-            <h1 class="hero-title">Kaynak kategorileri</h1>
-            <p class="hero-sub">X kaynaklarını konu başlıklarına ayırarak tarama, skorlama ve story gruplama adımlarını daha okunur hale getirin.</p>
-        </div>
-
-        <div class="hero-actions">
-            <a class="btn btn--primary" href="{{ route('admin.source-categories.create') }}">
+    <x-admin.page-header
+        eyebrow="Haber Toplama"
+        title="Kaynak kategorileri"
+        subtitle="X kaynaklarını konu başlıklarına ayırarak tarama, skorlama ve story gruplama adımlarını daha okunur hale getirin."
+    >
+        <x-slot:actions>
+            <x-admin.button variant="primary" :href="route('admin.source-categories.create')">
                 <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
                 Yeni kategori
-            </a>
-        </div>
-    </section>
+            </x-admin.button>
+        </x-slot:actions>
+    </x-admin.page-header>
 
-    @include('admin.partials.flash')
+    <x-admin.flash-message />
 
-    <section class="grid">
-        <section class="col-12 card" data-selection-key="source-categories">
-            <div class="card-head">
-                <div class="card-title-wrap">
-                    <span class="eyebrow">Liste</span>
-                    <h2 class="card-title">Kategoriler</h2>
+    <x-admin.card eyebrow="Liste" title="Kategoriler">
+        <x-slot:actions>
+            <span class="badge primary" data-selected-count data-selection-key="{{ $selectionKey }}">0 seçili</span>
+
+            <button
+                type="button"
+                class="btn btn--danger"
+                data-bulk-delete-trigger
+                data-selection-key="{{ $selectionKey }}"
+                data-confirm-delete-url="{{ route('admin.source-categories.bulk-destroy') }}"
+                data-confirm-delete-title="Seçili kategoriler silinsin mi?"
+                data-confirm-delete-message="Seçtiğiniz kayıtlar geri alınamaz şekilde silinecek."
+                disabled
+            >
+                <svg viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                Toplu sil
+            </button>
+        </x-slot:actions>
+
+        <form method="GET" action="{{ route('admin.source-categories.index') }}" class="data-toolbar">
+            <div class="data-toolbar-left">
+                <div class="input-icon" style="flex: 1; max-width: 320px;">
+                    <span class="ico">
+                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                    </span>
+                    <input
+                        class="input"
+                        type="search"
+                        name="q"
+                        value="{{ $search }}"
+                        placeholder="Kategori, slug veya açıklama ara..."
+                    >
                 </div>
 
-                <div class="card-head-actions" style="display: flex; align-items: center; gap: 12px;">
-                    <span class="badge primary" data-selected-count>0 seçili</span>
-                    <button type="button" class="btn btn--danger" data-bulk-delete-trigger disabled>
-                        <svg viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
-                        Toplu sil
-                    </button>
-                </div>
+                <button class="btn btn--ghost" type="submit">
+                    <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    Filtrele
+                    <span class="badge primary" style="margin-left: 4px;">{{ $activeFilters }}</span>
+                </button>
             </div>
 
-            <form method="GET" action="{{ route('admin.source-categories.index') }}" class="data-toolbar">
-                <div class="data-toolbar-left">
-                    <div class="input-icon" style="flex: 1; max-width: 320px;">
-                        <span class="ico">
-                            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-                        </span>
-                        <input
-                            class="input"
-                            type="search"
-                            name="q"
-                            value="{{ $search }}"
-                            placeholder="Kategori, slug veya açıklama ara..."
-                        >
-                    </div>
+            <div class="data-toolbar-right">
+                <select class="select" name="filter" onchange="this.form.submit()">
+                    @foreach ($filterOptions as $option)
+                        <option value="{{ $option['value'] }}" @selected($filter === $option['value'])>
+                            {{ $option['label'] }}
+                        </option>
+                    @endforeach
+                </select>
 
-                    <button class="btn btn--ghost" type="submit">
-                        <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                        Filtrele
-                        <span class="badge primary" style="margin-left: 4px;">{{ $activeFilters }}</span>
-                    </button>
-                </div>
+                <button class="btn btn--ghost btn--icon" type="button" aria-label="Columns">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="11"/></svg>
+                </button>
+            </div>
 
-                <div class="data-toolbar-right">
-                    <select class="select" name="filter" onchange="this.form.submit()">
-                        @foreach ($filterOptions as $option)
-                            <option value="{{ $option['value'] }}" @selected($filter === $option['value'])>
-                                {{ $option['label'] }}
-                            </option>
+            <input type="hidden" name="sort" value="{{ $sort }}">
+            <input type="hidden" name="dir" value="{{ $dir }}">
+            <input type="hidden" name="per_page" value="{{ $perPage }}">
+        </form>
+
+        <div style="overflow-x: auto; margin: 0 -22px;">
+            <table
+                class="data-table"
+                data-selection-table
+                data-selection-key="{{ $selectionKey }}"
+                style="margin: 0 22px; min-width: 900px;"
+            >
+                <thead>
+                    <tr>
+                        <th style="width: 32px;">
+                            <label class="check">
+                                <input type="checkbox" data-master-checkbox>
+                                <span class="box"></span>
+                            </label>
+                        </th>
+
+                        @foreach ($sortColumns as $column)
+                            <th class="{{ $column['class'] }}">
+                                <a href="{{ $column['url'] }}">
+                                    {{ $column['label'] }}
+                                    <span class="sort"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+                                </a>
+                            </th>
+                        @endforeach
+
+                        <th style="text-align: right">İşlemler</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @forelse ($categories as $category)
+                        <tr class="data-row" data-row-id="{{ $category->id }}">
+                            <td>
+                                <label class="check">
+                                    <input type="checkbox" data-row-checkbox data-row-id="{{ $category->id }}">
+                                    <span class="box"></span>
+                                </label>
+                            </td>
+
+                            <td>
+                                <div class="data-cell-user">
+                                    <div class="av {{ $category->avatar_class }}">{{ $category->display_initials }}</div>
+                                    <div class="data-cell-user-meta">
+                                        <div class="data-cell-user-name">{{ $category->name }}</div>
+                                        <div class="data-cell-user-email">{{ $category->slug }}</div>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <td><span class="data-cell-mono">{{ $category->slug }}</span></td>
+
+                            <td><span class="badge primary">{{ $category->sources_label }}</span></td>
+
+                            <td class="data-cell-mono">{{ $category->created_at->format('d.m.Y') }}</td>
+
+                            <td>
+                                <div class="data-cell-actions" style="justify-content: flex-end">
+                                    <a class="btn--icon" href="{{ route('admin.source-categories.edit', $category) }}" aria-label="Düzenle">
+                                        <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
+                                    </a>
+
+                                    <button
+                                        type="button"
+                                        class="btn--icon"
+                                        aria-label="Sil"
+                                        data-confirm-delete-trigger
+                                        data-confirm-delete-url="{{ route('admin.source-categories.destroy', $category) }}"
+                                        data-confirm-delete-title="Kategori silinsin mi?"
+                                        data-confirm-delete-message="&quot;{{ $category->name }}&quot; kalıcı olarak silinecek."
+                                        data-confirm-delete-label="{{ $category->name }}"
+                                    >
+                                        <svg viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6">
+                                <x-admin.empty-state
+                                    title="Henüz kategori yok"
+                                    description="Yeni bir kaynak kategorisi oluşturarak başlayabilirsiniz."
+                                >
+                                    <x-slot:default>
+                                        <div style="margin-top: 16px;">
+                                            <x-admin.button :href="route('admin.source-categories.create')" variant="primary">Yeni kategori</x-admin.button>
+                                        </div>
+                                    </x-slot:default>
+                                </x-admin.empty-state>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        <div class="data-foot">
+            <div class="data-foot-info">
+                <span>
+                    Showing
+                    <strong style="color: var(--t-base);">{{ $summary['start'] }}–{{ $summary['end'] }}</strong>
+                    of
+                    <strong style="color: var(--t-base);">{{ $summary['total'] }}</strong>
+                </span>
+
+                <form method="GET" action="{{ route('admin.source-categories.index') }}">
+                    <select class="select" name="per_page" onchange="this.form.submit()">
+                        @foreach ($pageSizeOptions as $option)
+                            <option value="{{ $option }}" @selected($perPage === $option)>{{ $option }} per page</option>
                         @endforeach
                     </select>
 
-                    <button class="btn btn--ghost btn--icon" type="button" aria-label="Columns">
-                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="11"/></svg>
+                    <input type="hidden" name="q" value="{{ $search }}">
+                    <input type="hidden" name="filter" value="{{ $filter }}">
+                    <input type="hidden" name="sort" value="{{ $sort }}">
+                    <input type="hidden" name="dir" value="{{ $dir }}">
+                </form>
+            </div>
+
+            <div class="pager" aria-label="Pagination">
+                @if ($pagination['previousUrl'])
+                    <a class="pager-btn" href="{{ $pagination['previousUrl'] }}" aria-label="Previous">
+                        <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                    </a>
+                @else
+                    <button class="pager-btn" disabled aria-label="Previous">
+                        <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
                     </button>
-                </div>
+                @endif
 
-                <input type="hidden" name="sort" value="{{ $sort }}">
-                <input type="hidden" name="dir" value="{{ $dir }}">
-            </form>
-
-            <div style="overflow-x: auto; margin: 0 -22px;">
-                <table class="data-table" data-selection-table data-selection-key="source-categories" style="margin: 0 22px; min-width: 900px;">
-                    <thead>
-                        <tr>
-                            <th style="width: 32px;">
-                                <label class="check">
-                                    <input type="checkbox" data-master-checkbox>
-                                    <span class="box"></span>
-                                </label>
-                            </th>
-
-                            @foreach ($sortColumns as $column)
-                                <th class="{{ $column['class'] }}">
-                                    <a href="{{ $column['url'] }}">
-                                        {{ $column['label'] }}
-                                        <span class="sort"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
-                                    </a>
-                                </th>
-                            @endforeach
-
-                            <th style="text-align: right">İşlemler</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        @forelse ($categories as $category)
-                            <tr class="data-row">
-                                <td>
-                                    <label class="check">
-                                        <input type="checkbox" data-row-checkbox data-row-id="{{ $category->id }}">
-                                        <span class="box"></span>
-                                    </label>
-                                </td>
-
-                                <td>
-                                    <div class="data-cell-user">
-                                        <div class="av {{ $category->avatar_class }}">{{ $category->display_initials }}</div>
-                                        <div class="data-cell-user-meta">
-                                            <div class="data-cell-user-name">{{ $category->name }}</div>
-                                            <div class="data-cell-user-email">{{ $category->slug }}</div>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td><span class="data-cell-mono">{{ $category->slug }}</span></td>
-
-                                <td><span class="badge primary">{{ $category->sources_label }}</span></td>
-
-                                <td>{{ $category->description_text }}</td>
-
-                                <td>
-                                    <div class="data-cell-actions">
-                                        <a class="btn--icon" href="{{ route('admin.source-categories.edit', $category) }}" aria-label="Düzenle">
-                                            <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
-                                        </a>
-
-                                        <form method="POST" action="{{ route('admin.source-categories.destroy', $category) }}">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button class="btn--icon" type="submit" aria-label="Sil">
-                                                <svg viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6">Henüz kategori yok.</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="data-foot">
-                <div class="data-foot-info">
-                    <span>
-                        Showing
-                        <strong style="color: var(--t-base);">{{ $summary['start'] }}–{{ $summary['end'] }}</strong>
-                        of
-                        <strong style="color: var(--t-base);">{{ $summary['total'] }}</strong>
-                    </span>
-
-                    <form method="GET" action="{{ route('admin.source-categories.index') }}">
-                        <select class="select" name="per_page" onchange="this.form.submit()">
-                            @foreach ($pageSizeOptions as $option)
-                                <option value="{{ $option }}" @selected($perPage === $option)>{{ $option }} per page</option>
-                            @endforeach
-                        </select>
-
-                        <input type="hidden" name="q" value="{{ $search }}">
-                        <input type="hidden" name="filter" value="{{ $filter }}">
-                        <input type="hidden" name="sort" value="{{ $sort }}">
-                        <input type="hidden" name="dir" value="{{ $dir }}">
-                    </form>
-                </div>
-
-                <div class="pager" aria-label="Pagination">
-                    @if ($pagination['previousUrl'])
-                        <a class="pager-btn" href="{{ $pagination['previousUrl'] }}" aria-label="Previous">
-                            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
-                        </a>
+                @foreach ($pagination['items'] as $item)
+                    @if ($item['ellipsis'])
+                        <button class="pager-btn" disabled>…</button>
                     @else
-                        <button class="pager-btn" disabled aria-label="Previous">
-                            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
-                        </button>
+                        <a class="pager-btn {{ $item['active'] ? 'is-active' : '' }}" href="{{ $item['url'] }}">{{ $item['number'] }}</a>
                     @endif
+                @endforeach
 
-                    @foreach ($pagination['items'] as $item)
-                        @if ($item['type'] === 'ellipsis')
-                            <button class="pager-btn" disabled>…</button>
-                        @else
-                            <a class="pager-btn {{ $item['active'] ? 'is-active' : '' }}" href="{{ $item['url'] }}">{{ $item['page'] }}</a>
-                        @endif
-                    @endforeach
-
-                    @if ($pagination['nextUrl'])
-                        <a class="pager-btn" href="{{ $pagination['nextUrl'] }}" aria-label="Next">
-                            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                        </a>
-                    @else
-                        <button class="pager-btn" disabled aria-label="Next">
-                            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                        </button>
-                    @endif
-                </div>
+                @if ($pagination['nextUrl'])
+                    <a class="pager-btn" href="{{ $pagination['nextUrl'] }}" aria-label="Next">
+                        <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </a>
+                @else
+                    <button class="pager-btn" disabled aria-label="Next">
+                        <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                @endif
             </div>
+        </div>
+    </x-admin.card>
 
-            <form method="POST" action="{{ route('admin.source-categories.bulk-destroy') }}" data-bulk-delete-form>
-                @csrf
-                @method('DELETE')
-                <div data-bulk-delete-inputs hidden></div>
-            </form>
-        </section>
-    </section>
+    <x-admin.modal
+        id="bulkDeleteModal"
+        title="Seçili kayıtları sil"
+        message="Onay verdiğinizde seçili kayıtlar geri alınamaz şekilde silinecek."
+    >
+        <form method="POST" action="{{ route('admin.source-categories.bulk-destroy') }}" data-confirm-delete-form>
+            @csrf
+            @method('DELETE')
+
+            <div data-confirm-delete-inputs></div>
+
+            <div class="form-actions" style="margin-top: 0;">
+                <x-admin.button variant="secondary" type="button" data-modal-close>Vazgeç</x-admin.button>
+                <div class="spacer"></div>
+                <x-admin.button variant="danger" type="submit">Sil</x-admin.button>
+            </div>
+        </form>
+    </x-admin.modal>
 @endsection

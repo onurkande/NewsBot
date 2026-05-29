@@ -5,18 +5,21 @@
 @section('crumbs', 'Haber Toplama | Yeni Kaynak')
 
 @section('content')
-    <section class="card">
-        <div class="card-head">
-            <div class="card-title-wrap">
-                <span class="eyebrow">Twscrape Kaynagi</span>
-                <h2 class="card-title">Yeni kaynak hesap</h2>
-            </div>
-        </div>
+    <x-admin.page-header
+        eyebrow="Twscrape Kaynağı"
+        title="Yeni kaynak hesap"
+        subtitle="X haber kaynaklarına yeni hesap ekleyin."
+    >
+        <x-slot:actions>
+            <x-admin.button variant="secondary" :href="route('admin.source-accounts.index')">Listeye dön</x-admin.button>
+        </x-slot:actions>
+    </x-admin.page-header>
 
-        @include('admin.partials.flash')
+    <x-admin.flash-message />
 
+    <x-admin.card eyebrow="Twscrape Kaynağı" title="Yeni kaynak hesap">
         <form method="POST" action="{{ route('admin.source-accounts.store') }}">
             @include('admin.source-accounts._form')
         </form>
-    </section>
+    </x-admin.card>
 @endsection

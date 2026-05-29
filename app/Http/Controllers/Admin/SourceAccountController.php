@@ -3,32 +3,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\SourceAccount\BulkDestroyRequest;
+use App\Http\Requests\Admin\SourceAccount\IndexRequest;
+use App\Http\Requests\Admin\SourceAccount\StoreRequest;
+use App\Http\Requests\Admin\SourceAccount\UpdateRequest;
 use App\Jobs\FetchSourceAccountTweets;
 use App\Models\SourceAccount;
 use App\Models\SourceCategory;
+use App\Queries\Admin\SourceAccountQuery;
+use App\Services\Admin\SourceAccountService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class SourceAccountController extends Controller
 {
-    public function index(Request $request): View
+    public function index(IndexRequest $request, SourceAccountQuery $query): View
     {
-        $accounts = SourceAccount::query()
-            ->with('category')
-            ->when($request->string('q')->toString(), function ($query, string $search) {
-                $query->where(function ($query) use ($search) {
-                    $query->where('username', 'like', "%{$search}%")
-                        ->orWhere('display_name', 'like', "%{$search}%");
-                });
-            })
-            ->when($request->filled('status'), fn ($query) => $query->where('is_active', $request->input('status') === 'active'))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
-
-        return view('admin.source-accounts.index', compact('accounts'));
+        return view('admin.source-accounts.index', $query->forIndex($request->filters()));
     }
 
     public function create(): View
@@ -44,11 +35,13 @@ class SourceAccountController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(StoreRequest $request, SourceAccountService $service): RedirectResponse
     {
-        SourceAccount::create($this->validated($request));
+        $service->create($request->validated());
 
-        return redirect()->route('admin.source-accounts.index')->with('success', 'Kaynak hesap olusturuldu.');
+        return redirect()
+            ->route('admin.source-accounts.index')
+            ->with('success', 'Kaynak hesap oluşturuldu.');
     }
 
     public function edit(SourceAccount $sourceAccount): View
@@ -59,46 +52,39 @@ class SourceAccountController extends Controller
         ]);
     }
 
-    public function update(Request $request, SourceAccount $sourceAccount): RedirectResponse
+    public function update(UpdateRequest $request, SourceAccount $sourceAccount, SourceAccountService $service): RedirectResponse
     {
-        $sourceAccount->update($this->validated($request, $sourceAccount));
+        $service->update($sourceAccount, $request->validated());
 
-        return redirect()->route('admin.source-accounts.index')->with('success', 'Kaynak hesap guncellendi.');
+        return redirect()
+            ->route('admin.source-accounts.index')
+            ->with('success', 'Kaynak hesap güncellendi.');
     }
 
-    public function destroy(SourceAccount $sourceAccount): RedirectResponse
+    public function destroy(SourceAccount $sourceAccount, SourceAccountService $service): RedirectResponse
     {
-        $sourceAccount->delete();
+        $service->delete($sourceAccount);
 
-        return redirect()->route('admin.source-accounts.index')->with('success', 'Kaynak hesap silindi.');
+        return redirect()
+            ->route('admin.source-accounts.index')
+            ->with('success', 'Kaynak hesap silindi.');
+    }
+
+    public function bulkDestroy(BulkDestroyRequest $request, SourceAccountService $service): RedirectResponse
+    {
+        $deleted = $service->bulkDelete($request->validated('selected'));
+
+        return redirect()
+            ->route('admin.source-accounts.index')
+            ->with('success', sprintf('%d kayıt silindi.', $deleted));
     }
 
     public function fetch(SourceAccount $sourceAccount): RedirectResponse
     {
         FetchSourceAccountTweets::dispatch($sourceAccount->id);
 
-        return redirect()->route('admin.source-accounts.index')->with('success', '@'.$sourceAccount->username.' toplama isine eklendi.');
-    }
-
-    private function validated(Request $request, ?SourceAccount $account = null): array
-    {
-        $request->merge([
-            'username' => ltrim((string) $request->input('username'), '@'),
-        ]);
-
-        $data = $request->validate([
-            'category_id' => ['nullable', 'exists:source_categories,id'],
-            'username' => ['required', 'string', 'max:255', Rule::unique('source_accounts')->ignore($account?->id)],
-            'display_name' => ['nullable', 'string', 'max:255'],
-            'priority_score' => ['required', 'integer', 'min:0', 'max:100'],
-            'check_interval_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
-            'trust_score' => ['required', 'integer', 'min:0', 'max:100'],
-            'is_active' => ['nullable', 'boolean'],
-            'notes' => ['nullable', 'string'],
-        ]);
-
-        $data['is_active'] = $request->boolean('is_active');
-
-        return $data;
+        return redirect()
+            ->route('admin.source-accounts.index')
+            ->with('success', '@' . $sourceAccount->username . ' toplama işine eklendi.');
     }
 }
