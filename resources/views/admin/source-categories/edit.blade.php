@@ -1,0 +1,23 @@
+@extends('admin.layouts.master')
+
+@section('title', 'Kategori Duzenle')
+@section('active', 'source-categories')
+@section('crumbs', 'Haber Toplama | Kategori Duzenle')
+
+@section('content')
+    <section class="card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Kaynak Kategorisi</span>
+                <h2 class="card-title">{{ $category->name }}</h2>
+            </div>
+        </div>
+
+        @include('admin.partials.flash')
+
+        <form method="POST" action="{{ route('admin.source-categories.update', $category) }}">
+            @method('PUT')
+            @include('admin.source-categories._form')
+        </form>
+    </section>
+@endsection
