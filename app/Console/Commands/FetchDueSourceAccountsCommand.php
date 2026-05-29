@@ -31,9 +31,16 @@ class FetchDueSourceAccountsCommand extends Command
 
         foreach ($accounts as $account) {
             if ($this->option('sync')) {
-                $payload = $client->fetchUserTweets($account);
-                $result = $ingestion->ingest($account, $payload['tweets'] ?? []);
-                $this->info("@{$account->username}: {$result['created']} yeni, {$result['skipped']} atlandi.");
+                try {
+                    $payload = $client->fetchUserTweets($account);
+                    $result = $ingestion->ingest($account, $payload['tweets'] ?? []);
+                    $this->info("@{$account->username}: {$result['created']} yeni, {$result['skipped']} atlandi.");
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error("Senkron tweet toplama hatasi (@{$account->username})", [
+                        'error' => $e->getMessage()
+                    ]);
+                    $this->error("@{$account->username} icin islem basarisiz: " . $e->getMessage());
+                }
             } else {
                 FetchSourceAccountTweets::dispatch($account->id);
                 $this->info("@{$account->username} queue'ya eklendi.");

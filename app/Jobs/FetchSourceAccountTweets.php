@@ -33,6 +33,12 @@ class FetchSourceAccountTweets implements ShouldQueue
     {
         $account = SourceAccount::find($this->sourceAccountId);
 
+        \Illuminate\Support\Facades\Log::error('FetchSourceAccountTweets basarisiz oldu', [
+            'source_account_id' => $this->sourceAccountId,
+            'username' => $account?->username,
+            'error' => $exception->getMessage(),
+        ]);
+
         SystemLog::create([
             'level' => 'error',
             'module' => 'twscrape',

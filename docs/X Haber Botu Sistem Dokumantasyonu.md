@@ -529,3 +529,133 @@ Sistemin en kritik noktaları:
 olacaktır.
 
 Proje büyüdükçe sistem daha modüler hale getirilecek ve servis mimarisi geliştirilecektir.
+
+---
+
+# Sayfalar
+
+Projede yer alan yönetim paneli sayfaları ve işlevleri aşağıda detaylandırılmıştır:
+
+## 1. Kaynak Hesaplar (`/admin/source-accounts`)
+Takip edilen ve düzenli olarak tweet toplanacak kaynak X (Twitter) hesaplarının yönetildiği sayfadır.
+* **CRUD İşlemleri**: Yeni kaynak hesap ekleme (kullanıcı adı, görünen ad, öncelik puanı, güven puanı, kontrol aralığı vb.), düzenleme ve silme.
+* **Toplu İşlemler**: Seçilen birden fazla kaynak hesabın tek seferde silinmesini (toplu silme) sağlar.
+* **Manuel Tweet Çekimi (Fetch)**: Her hesabın yanında bulunan "Topla" (Fetch) butonu yardımıyla, arka plan kuyruğuna (`FetchSourceAccountTweets` job'ı) anlık veri toplama görevi gönderilir.
+* **Detaylı Özellikler**:
+  * `is_active`: Hesabın otomatik taramaya dahil edilip edilmeyeceğini belirtir (Aktif/Pasif).
+  * `priority_score` & `trust_score`: Tweetlerin puanlanmasında kullanılan hesap önceliği ve güven derecesidir (0-100).
+  * `check_interval_minutes`: Scheduler'ın bu hesabı kaç dakikada bir kontrol edeceğini tanımlar.
+
+## 2. Kaynak Kategorileri (`/admin/source-categories`)
+Takip edilen kaynak hesapların ve bunlardan derlenecek hikayelerin konu başlıklarına göre gruplandırılmasını sağlayan yönetim ekranıdır (Örn: Siyaset, Spor, Teknoloji, Kripto vb.).
+* **Kategori Yönetimi**: Yeni kategoriler tanımlama, slug (URL dostu yapı) oluşturma, açıklama ekleme, düzenleme ve silme.
+* **İlişkili Hesap Takibi**: Kategori listesinde, o kategoriye atanmış aktif kaynak hesap sayıları (`sources_label`) doğrudan görüntülenebilir.
+* **Soft Delete**: Silinen kategoriler veritabanından kalıcı olarak yok edilmez, `SoftDeletes` mekanizması ile silindi olarak işaretlenir.
+
+## 3. Ham Tweetler (`/admin/raw-tweets`)
+Python servisi (`twscrape`) aracılığıyla X üzerinden çekilen ancak henüz işleme tabi tutulup yapay zekaya gönderilmemiş tüm ham tweetlerin listelendiği loglama ve izleme sayfasıdır.
+* **İçerik Görüntüleme**: Gelen tweetlerin ham metinlerini, benzersiz tweet ID'lerini ve gönderilme tarihlerini gösterir.
+* **Etkileşim İzleme**: Tweetlerin anlık beğeni (like), retweet (RT), yorum ve görüntülenme sayıları takip edilir.
+* **Arama ve Durum**: Tweet içeriğine veya ID'sine göre arama yapılabilir. Tweetin sistem tarafından işlenip bir hikaye kümesine (Story Cluster) atanıp atanmadığı (`is_processed` -> İşlendi / Bekliyor) bu ekrandan gözlemlenir.
+
+## 4. Story Cluster (`/admin/story-clusters`)
+Farklı kaynak hesaplardan toplanan benzer veya aynı konudaki tweetlerin algoritma tarafından tespit edilerek gruplandığı "Hikaye Kümeleri" listesidir. Burası yapay zeka ile haber yazma sürecinden bir önceki ortak havuzdur.
+* **Kümeleme Analizi**: Benzer tweetlerin oluşturduğu kümeleri (başlık, benzersiz küme hash'i, ana kaynak hesap) gösterir.
+* **Tweet Sayısı**: İlgili haber odağında kaç adet tweetin birleştiğini (`items_count`) belirtir.
+* **Story Score**: Kümedeki tweetlerin etkileşimleri, öncelikleri ve güven puanları hesaplanarak oluşturulmuş olan haber değerini (skorunu) gösterir.
+* **Durum Kontrolü**: Kümenin mevcut durumuna göre filtreleme yapılabilir:
+  * `open` (Açık): Yeni toplanmış, değerlendirilen hikayeler.
+  * `selected` (Seçildi): Yapay zeka ile haberleştirilmek üzere seçilenler.
+  * `published` (Yayınlandı): Başarıyla X üzerinde paylaşılanlar.
+  * `ignored` (Yoksayıldı): Haber değeri düşük görüldüğü için elenenler.
+
+---
+
+# Sistem Çalıştırma ve Kurulum Adımları
+
+Sistemin tam ve otomatik bir şekilde çalışabilmesi için hem yönetim panelinde yapılması gereken işlemler hem de arka planda çalıştırılması gereken terminal komutları mevcuttur.
+
+## 1. Yönetim Panelinde Yapılması Gerekenler
+
+Sistemin veri toplamaya ve hikaye oluşturmaya başlayabilmesi için öncelikle panel üzerinden şu adımların tamamlanması gerekir:
+
+1. **Kategori Tanımlama (`/admin/source-categories`)**:
+   * Sistemdeki tüm X kaynak hesapları bir kategoriye bağlı olmak zorundadır.
+   * Panelde "Yeni Kategori" butonuna basarak en az bir aktif kategori (örn: *Gündem, Teknoloji, Kripto*) tanımlanmalıdır.
+
+2. **Kaynak Hesap Ekleme (`/admin/source-accounts`)**:
+   * Takip edilmek istenen kaynak X hesapları (örn: `@bpthaber`) sisteme eklenmelidir.
+   * Hesap eklerken:
+     * **Kategori**: İlgili kategori seçilmelidir.
+     * **Kullanıcı Adı**: X (Twitter) kullanıcı adı (başına `@` koymadan) yazılmalıdır.
+     * **Durum**: "Aktif" olarak işaretlenmelidir (`is_active = true`).
+     * **Kontrol Aralığı**: Hesabın kaç dakikada bir kontrol edileceği belirlenmelidir (örn: 15 dakika).
+
+3. **Manuel İlk Tetikleme (İsteğe Bağlı)**:
+   * Hesapları ekledikten sonra otomatik zamanlayıcıyı beklemek istemiyorsanız, ilgili hesabın satırındaki "Topla" (Fetch) butonuna tıklayarak ilk tweet toplama görevini elle başlatabilirsiniz.
+
+---
+
+## 2. Terminalde Çalıştırılması Gereken Komutlar
+
+Sistemin web arayüzünü sunması, arka plan işlerini yürütmesi ve twscrape (Python) aracılığıyla veri toplaması için aşağıdaki komutların çalışıyor olması gerekir.
+
+### A. Laravel Web Sunucusu (Geliştirme Ortamı)
+Panel arayüzüne tarayıcıdan erişebilmek için Laravel sunucusu başlatılmalıdır:
+```bash
+php artisan serve
+```
+
+### B. Kuyruk İşleyicisi (Queue Worker)
+Tweet çekme, AI ile metin üretimi ve tweet paylaşımı gibi tüm arka plan görevleri Laravel Queue (Kuyruk) mimarisiyle yürütülür. `.env` dosyasında `QUEUE_CONNECTION=database` olarak ayarlandığı için bu kuyruğu işleyecek worker'ın arka planda sürekli çalışması şarttır:
+```bash
+php artisan queue:work
+```
+
+### C. Laravel Zamanlayıcı (Scheduler)
+Kontrol zamanı gelen kaynak hesapları otomatik olarak taramak için zamanlanmış görevlerin tetiklenmesi gerekir.
+* **Geliştirme (Local) Ortamında**: Scheduler'ı sürekli çalışır tutmak için terminalde şu komut açık bırakılmalıdır:
+  ```bash
+  php artisan schedule:work
+  ```
+* **Canlı (Production) Ortamında**: Sunucudaki sistem crontab'ine her dakika çalışacak şekilde şu satır eklenmelidir:
+  ```bash
+  * * * * * cd /proje-dizini && php artisan schedule:run >> /dev/null 2>&1
+  ```
+
+### D. Twscrape Python Entegrasyonu (fetch_user_tweets.py)
+Laravel'in Python tabanlı `twscrape` kütüphanesini kullanarak X üzerinden tweet çekme işlemi `app/Services/NewsCollection/TwscrapeClient.php` servisi tarafından yönetilmektedir.
+
+Süreç şu şekilde işler:
+1. `FetchDueSourceAccountsCommand` zamanlayıcı ile tetiklendiğinde kontrol zamanı gelmiş kaynak hesaplarını tespit eder.
+2. Bu hesapların her biri için `FetchSourceAccountTweets` job'u (kuyruk görevi) oluşturulur.
+3. Queue worker bu görevi işlerken `TwscrapeClient::fetchUserTweets` metodunu çağırır.
+4. Bu metod, `Symfony\Component\Process\Process` bileşenini kullanarak arka planda senkron bir terminal işlemi başlatır ve `services/twscrape/fetch_user_tweets.py` scriptini çalıştırır.
+5. Python kodu, kendi dizinindeki `accounts.db` SQLite veritabanındaki oturum bilgilerini kullanarak hedef X hesabından JSON formatında tweetleri döndürür.
+6. Laravel bu JSON'ı ayrıştırarak (`TweetIngestionService` üzerinden) veritabanına kaydeder.
+
+Oluşabilecek herhangi bir hata durumunda detaylar anlık olarak `storage/logs/laravel.log` dosyasına, veritabanındaki `system_logs` tablosuna ve yönetici paneli bildirimlerine (`alerts` tablosu) kaydedilmektedir.
+
+### D. Python `twscrape` (Veri Çekme Servisi) Hazırlığı
+Sistemin X üzerinden veri çekebilmesi için Python sanal ortamında `twscrape` API'sinin X hesaplarıyla yetkilendirilmesi gerekmektedir.
+1. Terminalden `services/twscrape` dizinine gidin ve Python sanal ortamını aktif edin:
+   * **Windows için**:
+     ```powershell
+     cd services/twscrape
+     .venv\Scripts\activate
+     ```
+   * **macOS / Linux için**:
+     ```bash
+     cd services/twscrape
+     source .venv/bin/activate
+     ```
+2. `twscrape` veritabanına (`accounts.db`) en az bir adet çalışan X hesabı ekleyin:
+   ```bash
+   twscrape add_accounts accounts.txt
+   ```
+   *(Not: `accounts.txt` dosyası `kullanici_adi:sifre:eposta:eposta_sifresi` formatında hazırlanmış olmalıdır.)*
+3. Eklenen hesapların sisteme giriş yapabilmesi için login komutunu çalıştırın:
+   ```bash
+   twscrape login_accounts
+   ```
+   *(Tüm hesapların giriş durumunun başarılı (Active) olduğundan emin olunmalıdır.)*

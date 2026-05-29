@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 from twscrape import API, gather
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 
 
 def tweet_to_dict(tweet):

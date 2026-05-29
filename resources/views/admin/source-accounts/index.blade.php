@@ -105,6 +105,7 @@
                             </th>
                         @endforeach
 
+                        <th>Durum</th>
                         <th style="text-align: right">İşlemler</th>
                     </tr>
                 </thead>
@@ -139,7 +140,13 @@
 
                             <td class="data-cell-mono">{{ $account->check_interval_minutes }} dk</td>
 
-                            <td class="data-cell-mono">{{ $account->last_checked_at?->diffForHumans() ?: 'Bekliyor' }}</td>
+                            <td>
+                                @if ($account->last_checked_at)
+                                    <span class="data-cell-mono">{{ $account->last_checked_at->diffForHumans() }}</span>
+                                @else
+                                    <span class="badge primary">Bekliyor</span>
+                                @endif
+                            </td>
 
                             <td>
                                 <span class="tag {{ $account->is_active ? 't-active' : 't-unavail' }}">

@@ -29,12 +29,22 @@ class TwscrapeClient
         $process->run();
 
         if (! $process->isSuccessful()) {
-            throw new RuntimeException(trim($process->getErrorOutput()) ?: 'twscrape command failed.');
+            $errorOutput = trim($process->getErrorOutput()) ?: 'twscrape command failed.';
+            \Illuminate\Support\Facades\Log::error('TwscrapeClient process failed', [
+                'username' => $account->username,
+                'error' => $errorOutput,
+                'command' => $process->getCommandLine(),
+            ]);
+            throw new RuntimeException($errorOutput);
         }
 
         $payload = json_decode($process->getOutput(), true);
 
         if (! is_array($payload) || ! array_key_exists('tweets', $payload)) {
+            \Illuminate\Support\Facades\Log::error('TwscrapeClient invalid payload', [
+                'username' => $account->username,
+                'output' => $process->getOutput(),
+            ]);
             throw new RuntimeException('twscrape did not return a valid JSON payload.');
         }
 

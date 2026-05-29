@@ -133,10 +133,10 @@
 
                             <td><span class="badge primary">{{ $category->sources_label }}</span></td>
 
-                            <td>{{ $category->description_text }}</td>
+                            <td class="data-cell-mono">{{ $category->created_at->format('d.m.Y') }}</td>
 
                             <td>
-                                <div class="data-cell-actions">
+                                <div class="data-cell-actions" style="justify-content: flex-end">
                                     <a class="btn--icon" href="{{ route('admin.source-categories.edit', $category) }}" aria-label="Düzenle">
                                         <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>
                                     </a>

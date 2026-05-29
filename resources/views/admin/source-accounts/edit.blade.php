@@ -7,7 +7,7 @@
 @section('content')
     <x-admin.page-header
         eyebrow="Twscrape Kaynağı"
-        title="@{{ $account->username }}"
+        title="{{ $account->username }}"
         subtitle="Kaynak hesap bilgilerini düzenleyin."
     >
         <x-slot:actions>
@@ -17,7 +17,7 @@
 
     <x-admin.flash-message />
 
-    <x-admin.card eyebrow="Twscrape Kaynağı" title="@{{ $account->username }}">
+    <x-admin.card eyebrow="Twscrape Kaynağı" title="{{ $account->username }}">
         <form method="POST" action="{{ route('admin.source-accounts.update', $account) }}">
             @method('PUT')
             @include('admin.source-accounts._form')
