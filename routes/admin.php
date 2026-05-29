@@ -36,6 +36,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         ->name('source-categories.bulk-destroy');
 
     Route::resource('source-accounts', SourceAccountController::class)->except('show');
+    Route::delete('source-accounts/bulk-destroy', [SourceAccountController::class, 'bulkDestroy'])
+        ->name('source-accounts.bulk-destroy');
     Route::post('source-accounts/{source_account}/fetch', [SourceAccountController::class, 'fetch'])->name('source-accounts.fetch');
 
     Route::get('raw-tweets', [RawTweetController::class, 'index'])->name('raw-tweets.index');

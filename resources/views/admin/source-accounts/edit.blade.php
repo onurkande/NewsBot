@@ -1,23 +1,26 @@
 @extends('admin.layouts.master')
 
-@section('title', 'Kaynak Duzenle')
+@section('title', 'Kaynak Düzenle')
 @section('active', 'source-accounts')
-@section('crumbs', 'Haber Toplama | Kaynak Duzenle')
+@section('crumbs', 'Haber Toplama | Kaynak Düzenle')
 
 @section('content')
-    <section class="card">
-        <div class="card-head">
-            <div class="card-title-wrap">
-                <span class="eyebrow">Twscrape Kaynagi</span>
-                <h2 class="card-title">@{{ $account->username }}</h2>
-            </div>
-        </div>
+    <x-admin.page-header
+        eyebrow="Twscrape Kaynağı"
+        title="@{{ $account->username }}"
+        subtitle="Kaynak hesap bilgilerini düzenleyin."
+    >
+        <x-slot:actions>
+            <x-admin.button variant="secondary" :href="route('admin.source-accounts.index')">Listeye dön</x-admin.button>
+        </x-slot:actions>
+    </x-admin.page-header>
 
-        @include('admin.partials.flash')
+    <x-admin.flash-message />
 
+    <x-admin.card eyebrow="Twscrape Kaynağı" title="@{{ $account->username }}">
         <form method="POST" action="{{ route('admin.source-accounts.update', $account) }}">
             @method('PUT')
             @include('admin.source-accounts._form')
         </form>
-    </section>
+    </x-admin.card>
 @endsection

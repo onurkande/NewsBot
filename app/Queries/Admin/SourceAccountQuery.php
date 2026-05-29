@@ -2,16 +2,13 @@
 
 namespace App\Queries\Admin;
 
-use App\Models\SourceCategory;
+use App\Models\SourceAccount;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Pagination\LengthAwarePaginator as Paginator;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
-class SourceCategoryQuery
+class SourceAccountQuery
 {
-    private const DEFAULT_SORT = 'name';
+    private const DEFAULT_SORT = 'username';
     private const DEFAULT_DIR = 'asc';
     private const DEFAULT_PER_PAGE = 15;
 
@@ -21,7 +18,7 @@ class SourceCategoryQuery
         $paginator = $this->paginate($filters);
 
         return [
-            'categories' => $paginator,
+            'accounts' => $paginator,
             'search' => $filters['q'],
             'filter' => $filters['filter'],
             'sort' => $filters['sort'],
@@ -33,37 +30,37 @@ class SourceCategoryQuery
             'summary' => $this->summary($paginator),
             'pagination' => $this->paginationWindow($paginator, $filters),
             'activeFilters' => $this->activeFiltersCount($filters),
-            'selectionKey' => 'source-categories',
+            'selectionKey' => 'source-accounts',
         ];
     }
 
     public function paginate(array $filters): LengthAwarePaginator
     {
-        $query = SourceCategory::query()
-            ->withoutTrashed()
-            ->withCount('sourceAccounts');
+        $query = SourceAccount::query()
+            ->with('category');
 
         if ($filters['q'] !== '') {
             $search = $filters['q'];
 
             $query->where(function ($builder) use ($search) {
-                $builder->where('name', 'like', "%{$search}%")
-                    ->orWhere('slug', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%");
+                $builder->where('username', 'like', "%{$search}%")
+                    ->orWhere('display_name', 'like', "%{$search}%");
             });
         }
 
         match ($filters['filter']) {
-            'with-sources' => $query->having('source_accounts_count', '>', 0),
-            'without-sources' => $query->having('source_accounts_count', '=', 0),
+            'active' => $query->where('is_active', true),
+            'passive' => $query->where('is_active', false),
             default => null,
         };
 
         $sortColumn = match ($filters['sort']) {
-            'slug' => 'slug',
-            'sources' => 'source_accounts_count',
-            'created_at' => 'created_at',
-            default => 'name',
+            'username' => 'username',
+            'trust_score' => 'trust_score',
+            'priority_score' => 'priority_score',
+            'check_interval' => 'check_interval_minutes',
+            'last_checked' => 'last_checked_at',
+            default => 'username',
         };
 
         $query->orderBy($sortColumn, $filters['dir']);
@@ -78,8 +75,8 @@ class SourceCategoryQuery
     {
         return [
             ['value' => 'all', 'label' => 'Tüm durumlar'],
-            ['value' => 'with-sources', 'label' => 'Kaynağı olanlar'],
-            ['value' => 'without-sources', 'label' => 'Kaynağı olmayanlar'],
+            ['value' => 'active', 'label' => 'Aktif'],
+            ['value' => 'passive', 'label' => 'Pasif'],
         ];
     }
 
@@ -91,10 +88,11 @@ class SourceCategoryQuery
     public function sortColumns(array $filters): array
     {
         $columns = [
-            ['label' => 'Ad', 'key' => 'name'],
-            ['label' => 'Slug', 'key' => 'slug'],
-            ['label' => 'Kaynak', 'key' => 'sources'],
-            ['label' => 'Oluşturulma', 'key' => 'created_at'],
+            ['label' => 'Hesap', 'key' => 'username'],
+            ['label' => 'Güven', 'key' => 'trust_score'],
+            ['label' => 'Öncelik', 'key' => 'priority_score'],
+            ['label' => 'Aralık', 'key' => 'check_interval'],
+            ['label' => 'Son Kontrol', 'key' => 'last_checked'],
         ];
 
         return collect($columns)->map(function (array $column) use ($filters) {
@@ -105,7 +103,7 @@ class SourceCategoryQuery
                 'label' => $column['label'],
                 'key' => $column['key'],
                 'class' => $active ? ('sorted-' . $filters['dir']) : '',
-                'url' => route('admin.source-categories.index', array_filter([
+                'url' => route('admin.source-accounts.index', array_filter([
                     'q' => $filters['q'] !== '' ? $filters['q'] : null,
                     'filter' => $filters['filter'] !== 'all' ? $filters['filter'] : null,
                     'per_page' => $filters['per_page'] !== self::DEFAULT_PER_PAGE ? $filters['per_page'] : null,
@@ -166,7 +164,7 @@ class SourceCategoryQuery
                 return [
                     'ellipsis' => false,
                     'number' => $page,
-                    'url' => route('admin.source-categories.index', array_filter([
+                    'url' => route('admin.source-accounts.index', array_filter([
                         'q' => $filters['q'] !== '' ? $filters['q'] : null,
                         'filter' => $filters['filter'] !== 'all' ? $filters['filter'] : null,
                         'sort' => $filters['sort'] !== self::DEFAULT_SORT ? $filters['sort'] : null,
@@ -197,34 +195,12 @@ class SourceCategoryQuery
 
     private function normalizeFilters(array $filters): array
     {
-        $q = trim((string) Arr::get($filters, 'q', ''));
-        $filter = (string) Arr::get($filters, 'filter', 'all');
-        $sort = (string) Arr::get($filters, 'sort', self::DEFAULT_SORT);
-        $dir = (string) Arr::get($filters, 'dir', self::DEFAULT_DIR);
-        $perPage = (int) Arr::get($filters, 'per_page', self::DEFAULT_PER_PAGE);
-
-        if (! in_array($filter, ['all', 'with-sources', 'without-sources'], true)) {
-            $filter = 'all';
-        }
-
-        if (! in_array($sort, ['name', 'slug', 'sources', 'created_at'], true)) {
-            $sort = self::DEFAULT_SORT;
-        }
-
-        if (! in_array($dir, ['asc', 'desc'], true)) {
-            $dir = self::DEFAULT_DIR;
-        }
-
-        if (! in_array($perPage, $this->pageSizeOptions(), true)) {
-            $perPage = self::DEFAULT_PER_PAGE;
-        }
-
         return [
-            'q' => $q,
-            'filter' => $filter,
-            'sort' => $sort,
-            'dir' => $dir,
-            'per_page' => $perPage,
+            'q' => trim((string) ($filters['q'] ?? '')),
+            'filter' => $filters['filter'] ?? 'all',
+            'sort' => $filters['sort'] ?? self::DEFAULT_SORT,
+            'dir' => strtolower((string) ($filters['dir'] ?? self::DEFAULT_DIR)),
+            'per_page' => (int) ($filters['per_page'] ?? self::DEFAULT_PER_PAGE),
         ];
     }
 }

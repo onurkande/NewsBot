@@ -211,10 +211,10 @@
                 @endif
 
                 @foreach ($pagination['items'] as $item)
-                    @if ($item['type'] === 'ellipsis')
+                    @if ($item['ellipsis'])
                         <button class="pager-btn" disabled>…</button>
                     @else
-                        <a class="pager-btn {{ $item['active'] ? 'is-active' : '' }}" href="{{ $item['url'] }}">{{ $item['page'] }}</a>
+                        <a class="pager-btn {{ $item['active'] ? 'is-active' : '' }}" href="{{ $item['url'] }}">{{ $item['number'] }}</a>
                     @endif
                 @endforeach
 
