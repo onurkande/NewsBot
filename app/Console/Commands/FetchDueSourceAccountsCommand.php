@@ -32,8 +32,17 @@ class FetchDueSourceAccountsCommand extends Command
         foreach ($accounts as $account) {
             if ($this->option('sync')) {
                 try {
-                    $payload = $client->fetchUserTweets($account);
+                    $limit = $account->limited_initial_fetch_pending
+                        ? (int) config('news_collection.twscrape.initial_activation_limit')
+                        : null;
+
+                    $payload = $client->fetchUserTweets($account, $limit);
                     $result = $ingestion->ingest($account, $payload['tweets'] ?? []);
+
+                    if ($account->limited_initial_fetch_pending) {
+                        $account->update(['limited_initial_fetch_pending' => false]);
+                    }
+
                     $this->info("@{$account->username}: {$result['created']} yeni, {$result['skipped']} atlandi.");
                 } catch (\Throwable $e) {
                     \Illuminate\Support\Facades\Log::error("Senkron tweet toplama hatasi (@{$account->username})", [

@@ -24,9 +24,17 @@ class FetchSourceAccountTweets implements ShouldQueue
     public function handle(TwscrapeClient $client, TweetIngestionService $ingestion): void
     {
         $account = SourceAccount::findOrFail($this->sourceAccountId);
-        $payload = $client->fetchUserTweets($account);
+        $limit = $account->limited_initial_fetch_pending
+            ? (int) config('news_collection.twscrape.initial_activation_limit')
+            : null;
+
+        $payload = $client->fetchUserTweets($account, $limit);
 
         $ingestion->ingest($account, $payload['tweets'] ?? []);
+
+        if ($account->limited_initial_fetch_pending) {
+            $account->update(['limited_initial_fetch_pending' => false]);
+        }
     }
 
     public function failed(Throwable $exception): void

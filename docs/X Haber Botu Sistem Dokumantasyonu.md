@@ -659,3 +659,77 @@ Sistemin X üzerinden veri çekebilmesi için Python sanal ortamında `twscrape`
    twscrape login_accounts
    ```
    *(Tüm hesapların giriş durumunun başarılı (Active) olduğundan emin olunmalıdır.)*
+
+---
+
+# Mevcut Tweet Toplama Çalışma Mantığı
+
+Bu bölüm, projedeki mevcut Laravel + Queue + twscrape akışının nasıl çalıştığını ve aynı tweetlerin tekrar kaydedilmesinin nasıl engellendiğini açıklar.
+
+## 1. Kaynak hesabın kuyruğa düşmesi
+
+Kaynak hesaplar `source_accounts` tablosunda tutulur. Bir kaynak hesabın otomatik taramaya dahil olması için:
+
+* `is_active = true` olmalıdır.
+* `last_checked_at` boş olmalıdır ya da son kontrol zamanının üzerinden `check_interval_minutes` kadar süre geçmiş olmalıdır.
+
+Laravel scheduler `routes/console.php` içinde `news:fetch-due-sources` komutunu her dakika çalıştırır. Bu komut zamanı gelen aktif kaynakları bulur ve her kaynak için `FetchSourceAccountTweets` queue job'ını kuyruğa ekler.
+
+Örnek: Bir hesabın `check_interval_minutes` değeri 15 ise scheduler her dakika kontrol eder, ama bu hesap ancak son başarılı kontrolden 15 dakika sonra tekrar kuyruğa alınır.
+
+## 2. İlk ekleme ve yeniden aktifleştirme limiti
+
+Yeni bir kaynak hesap eklendiğinde sistem bu hesabı hemen normal tweet limitiyle taramaz. İlk başarılı toplama işleminde sadece 5 tweet ister.
+
+Aynı kural, daha önce pasife alınmış bir kaynak hesabın tekrar aktif edilmesi için de geçerlidir:
+
+* Kaynak yeni eklendiğinde `limited_initial_fetch_pending = true` olur.
+* Kaynak `is_active = false` durumundan tekrar `is_active = true` durumuna getirilirse `limited_initial_fetch_pending` tekrar `true` yapılır.
+* Queue job çalıştığında bu değer `true` ise `twscrape` sadece `TWSCRAPE_INITIAL_ACTIVATION_LIMIT` kadar tweet çeker. Varsayılan değer 5'tir.
+* Toplama işlemi başarılı tamamlanınca `limited_initial_fetch_pending = false` yapılır.
+* Sonraki periyodik kontrollerde normal limit kullanılır. Normal limit `TWSCRAPE_FETCH_LIMIT` ile belirlenir, varsayılan değer 20'dir.
+
+Bu davranışın amacı yeni veya yeniden aktif edilmiş kaynaklarda bir anda çok fazla tweet çekmemek ve X tarafında bot/rate-limit riskini azaltmaktır.
+
+## 3. twscrape şu anda hangi tweetleri kontrol ediyor?
+
+Mevcut Python scripti `services/twscrape/fetch_user_tweets.py` içinde şu çağrıyı yapar:
+
+```python
+tweets = await gather(api.user_tweets(user.id, limit=args.limit))
+```
+
+Yani sistem şu anda ilgili kullanıcının son tweetlerini ister. Kaç tweet isteneceği Laravel tarafından `--limit` parametresiyle gönderilir:
+
+* İlk ekleme veya yeniden aktifleştirme sonrası ilk başarılı çalışmada: 5 tweet.
+* Normal periyodik çalışmalarda: varsayılan olarak 20 tweet.
+
+Mevcut yapıda `last_seen_tweet_id` Python tarafına gönderilip "sadece bu ID'den sonrasını getir" şeklinde kullanılmıyor. Bu alan şu anda son görülen tweet ID'sini kayıt altında tutmak için güncelleniyor.
+
+## 4. Aynı tweetler tekrar nasıl kaydedilmiyor?
+
+Sistem her çalışmada son N tweeti tekrar görebilir. Aynı tweetlerin veritabanına tekrar yazılmasını engelleyen ana mekanizma `raw_tweets.tweet_id` alanıdır:
+
+* `raw_tweets.tweet_id` veritabanında unique olarak tanımlıdır.
+* `TweetIngestionService` her tweet için önce `RawTweet::where('tweet_id', $tweetId)->exists()` kontrolü yapar.
+* Tweet daha önce kaydedilmişse yeni kayıt açılmaz ve `skipped` sayısına eklenir.
+* Tweet daha önce yoksa `raw_tweets` tablosuna kaydedilir, normalize edilir, duplicate/story cluster kontrollerinden geçirilir ve işlenmiş olarak işaretlenir.
+
+Bu nedenle sistem "tüm eski tweetleri tekrar tarıyor" şeklinde çalışmaz. Her fetch işleminde sadece twscrape'e verilen limit kadar son tweet alınır. Ancak alınan bu son tweetlerin içinde daha önce kaydedilmiş olanlar varsa, ingest aşamasında atlanır.
+
+## 5. Benzer haber/duplicate kontrolü nasıl çalışıyor?
+
+Tweet ID tekrar kontrolünden ayrı olarak, haber benzerliği için normalize edilmiş metin ve URL bazlı bir kontrol de vardır:
+
+* Yeni tweetin metni normalize edilir ve `tweet_normalized_texts` tablosuna kaydedilir.
+* Sistem son 50 normalize tweet kaydını aday olarak alır.
+* Ortak URL varsa duplicate kabul eder.
+* Ortak URL yoksa metin benzerliği `similar_text` ile hesaplanır.
+* Benzerlik oranı `NEWS_SIMILARITY_THRESHOLD` değerinin üzerindeyse duplicate/benzer haber olarak işaretlenir.
+* Bu sonuç `duplicate_checks` tablosunda saklanır ve tweet uygun story cluster'a bağlanır.
+
+Özetle:
+
+* Aynı tweet tekrar kaydedilmez: `tweet_id` kontrolü ile engellenir.
+* Benzer haberler gruplanır: URL ve metin benzerliği ile story cluster'a bağlanır.
+* Fetch aşamasında sadece son N tweet istenir; geçmişteki tüm tweetler baştan sona taranmaz.
