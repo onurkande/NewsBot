@@ -11,14 +11,22 @@ class SourceAccountService
     public function create(array $data): SourceAccount
     {
         return DB::transaction(function () use ($data) {
-            return SourceAccount::create($this->normalize($data));
+            return SourceAccount::create(array_merge($this->normalize($data), [
+                'limited_initial_fetch_pending' => true,
+            ]));
         });
     }
 
     public function update(SourceAccount $account, array $data): SourceAccount
     {
         return DB::transaction(function () use ($account, $data) {
-            $account->update($this->normalize($data));
+            $normalized = $this->normalize($data);
+
+            if (! $account->is_active && $normalized['is_active']) {
+                $normalized['limited_initial_fetch_pending'] = true;
+            }
+
+            $account->update($normalized);
 
             return $account->refresh();
         });
@@ -61,7 +69,7 @@ class SourceAccountService
             'priority_score' => (int) Arr::get($data, 'priority_score', 50),
             'trust_score' => (int) Arr::get($data, 'trust_score', 50),
             'check_interval_minutes' => (int) Arr::get($data, 'check_interval_minutes', 15),
-            'is_active' => (bool) Arr::get($data, 'is_active', true),
+            'is_active' => (bool) Arr::get($data, 'is_active', false),
             'notes' => $this->nullableTrim(Arr::get($data, 'notes')),
         ];
     }

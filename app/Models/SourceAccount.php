@@ -21,6 +21,7 @@ class SourceAccount extends Model
         'is_active',
         'last_checked_at',
         'last_seen_tweet_id',
+        'limited_initial_fetch_pending',
         'trust_score',
         'notes',
     ];
@@ -29,6 +30,7 @@ class SourceAccount extends Model
     {
         return [
             'is_active' => 'boolean',
+            'limited_initial_fetch_pending' => 'boolean',
             'last_checked_at' => 'datetime',
             'priority_score' => 'integer',
             'check_interval_minutes' => 'integer',
