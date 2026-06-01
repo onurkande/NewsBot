@@ -25,6 +25,10 @@ class RawTweet extends Model
         'quote_count',
         'fetched_at',
         'is_processed',
+        'selected_for_pool',
+        'selected_at',
+        'selected_for_ai',
+        'ai_sent_at',
     ];
 
     protected function casts(): array
@@ -34,6 +38,10 @@ class RawTweet extends Model
             'tweeted_at' => 'datetime',
             'fetched_at' => 'datetime',
             'is_processed' => 'boolean',
+            'selected_for_pool' => 'boolean',
+            'selected_at' => 'datetime',
+            'selected_for_ai' => 'boolean',
+            'ai_sent_at' => 'datetime',
             'like_count' => 'integer',
             'retweet_count' => 'integer',
             'reply_count' => 'integer',
