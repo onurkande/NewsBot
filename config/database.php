@@ -44,6 +44,14 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        'twscrape' => [
+            'driver' => 'sqlite',
+            'url' => env('DB_URL'),
+            'database' => env('TWSCRAPE_ACCOUNTS_DB', base_path('services/twscrape/accounts.db')),
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),

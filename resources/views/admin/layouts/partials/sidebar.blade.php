@@ -64,6 +64,50 @@
     </nav>
 
     <nav class="nav-section">
+        <div class="nav-label">Twscrape Yönetimi</div>
+        <a class="nav-link {{ request()->routeIs('admin.twscrape.accounts.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.accounts.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>Hesaplar</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.twscrape.stats.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.stats.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+            <span>Kullanım İstatistikleri</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.twscrape.commands.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.commands.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+            <span>Komutlar</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.twscrape.health.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.health.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+            </svg>
+            <span>Sağlık Durumu</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.twscrape.logs.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.logs.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            <span>İşlem Logları</span>
+        </a>
+    </nav>
+
+    <nav class="nav-section">
         <div class="nav-label">Örnek Başlıklar</div>
         <a class="nav-link" href="charts.html">
             <svg viewBox="0 0 24 24">
