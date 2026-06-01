@@ -33,7 +33,8 @@ class StoreRequest extends FormRequest
             ],
             'display_name' => ['nullable', 'string', 'max:255'],
             'priority_score' => ['required', 'integer', 'min:0', 'max:100'],
-            'check_interval_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
+            'min_check_interval_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
+            'max_check_interval_minutes' => ['required', 'integer', 'min:1', 'max:1440', 'gte:min_check_interval_minutes'],
             'trust_score' => ['required', 'integer', 'min:0', 'max:100'],
             'is_active' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
@@ -47,7 +48,9 @@ class StoreRequest extends FormRequest
             'username.unique' => 'Bu kullanıcı adı zaten ekli.',
             'trust_score.required' => 'Güven puanı zorunludur.',
             'priority_score.required' => 'Öncelik puanı zorunludur.',
-            'check_interval_minutes.required' => 'Kontrol aralığı zorunludur.',
+            'min_check_interval_minutes.required' => 'Minimum kontrol aralığı zorunludur.',
+            'max_check_interval_minutes.required' => 'Maksimum kontrol aralığı zorunludur.',
+            'max_check_interval_minutes.gte' => 'Maksimum kontrol aralığı minimum değerden küçük olamaz.',
         ];
     }
 
@@ -59,7 +62,8 @@ class StoreRequest extends FormRequest
             'category_id' => 'kategori',
             'trust_score' => 'güven puanı',
             'priority_score' => 'öncelik puanı',
-            'check_interval_minutes' => 'kontrol aralığı',
+            'min_check_interval_minutes' => 'minimum kontrol aralığı',
+            'max_check_interval_minutes' => 'maksimum kontrol aralığı',
             'is_active' => 'aktif',
             'notes' => 'notlar',
         ];

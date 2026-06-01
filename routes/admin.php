@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Admin\RawTweetController;
+use App\Http\Controllers\Admin\ScanHistoryController;
 use App\Http\Controllers\Admin\SourceAccountController;
 use App\Http\Controllers\Admin\SourceCategoryController;
 use App\Http\Controllers\Admin\StoryClusterController;
@@ -42,4 +43,6 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::get('raw-tweets', [RawTweetController::class, 'index'])->name('raw-tweets.index');
     Route::get('story-clusters', [StoryClusterController::class, 'index'])->name('story-clusters.index');
+    Route::get('story-clusters/{storyCluster}', [StoryClusterController::class, 'show'])->name('story-clusters.show');
+    Route::get('scan-histories', [ScanHistoryController::class, 'index'])->name('scan-histories.index');
 });

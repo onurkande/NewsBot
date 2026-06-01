@@ -58,8 +58,9 @@ class SourceAccountQuery
             'username' => 'username',
             'trust_score' => 'trust_score',
             'priority_score' => 'priority_score',
-            'check_interval' => 'check_interval_minutes',
+            'check_interval' => 'min_check_interval_minutes',
             'last_checked' => 'last_checked_at',
+            'next_check_at' => 'next_check_at',
             default => 'username',
         };
 
@@ -93,6 +94,7 @@ class SourceAccountQuery
             ['label' => 'Öncelik', 'key' => 'priority_score'],
             ['label' => 'Aralık', 'key' => 'check_interval'],
             ['label' => 'Son Kontrol', 'key' => 'last_checked'],
+            ['label' => 'Sonraki Tarama', 'key' => 'next_check_at'],
         ];
 
         return collect($columns)->map(function (array $column) use ($filters) {

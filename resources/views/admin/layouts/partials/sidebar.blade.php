@@ -54,6 +54,13 @@
             </svg>
             <span>Story Cluster</span>
         </a>
+        <a class="nav-link {{ request()->routeIs('admin.scan-histories.*') ? 'is-active' : '' }}" href="{{ route('admin.scan-histories.index') }}">
+            <svg viewBox="0 0 24 24">
+                <path d="M3 3v18h18" />
+                <path d="M7 15l4-4 3 3 5-7" />
+            </svg>
+            <span>Tarama Geçmişi</span>
+        </a>
     </nav>
 
     <nav class="nav-section">

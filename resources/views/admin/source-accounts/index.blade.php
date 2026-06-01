@@ -138,13 +138,24 @@
                                 <span class="badge primary">{{ $account->priority_score }}/100</span>
                             </td>
 
-                            <td class="data-cell-mono">{{ $account->check_interval_minutes }} dk</td>
+                            <td class="data-cell-mono">
+                                {{ $account->min_check_interval_minutes ?: $account->check_interval_minutes }}-{{ $account->max_check_interval_minutes ?: $account->check_interval_minutes }} dk
+                            </td>
 
                             <td>
                                 @if ($account->last_checked_at)
                                     <span class="data-cell-mono">{{ $account->last_checked_at->diffForHumans() }}</span>
                                 @else
                                     <span class="badge primary">Bekliyor</span>
+                                @endif
+                            </td>
+
+                            <td>
+                                @if ($account->next_check_at)
+                                    <div class="data-cell-mono">{{ $account->next_check_interval_minutes ?: '-' }} dk</div>
+                                    <div class="data-cell-user-email">{{ $account->next_check_at->format('Y-m-d H:i') }}</div>
+                                @else
+                                    <span class="badge primary">Sırada</span>
                                 @endif
                             </td>
 
@@ -184,7 +195,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8">
+                            <td colspan="9">
                                 <x-admin.empty-state
                                     title="Henüz kaynak hesap yok"
                                     description="Yeni bir kaynak hesabı oluşturarak başlayabilirsiniz."
@@ -276,4 +287,3 @@
         </form>
     </x-admin.modal>
 @endsection
-

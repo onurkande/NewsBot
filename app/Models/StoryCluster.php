@@ -52,4 +52,9 @@ class StoryCluster extends Model
     {
         return $this->hasMany(StoryScore::class);
     }
+
+    public function scanHistories(): HasMany
+    {
+        return $this->hasMany(ClusterScanHistory::class);
+    }
 }

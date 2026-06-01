@@ -21,13 +21,30 @@ class TweetIngestionService
         $created = 0;
         $skipped = 0;
         $clusters = 0;
+        $processed = 0;
+        $clusterIds = [];
 
-        DB::transaction(function () use ($account, $tweets, &$created, &$skipped, &$clusters) {
+        DB::transaction(function () use ($account, $tweets, &$created, &$skipped, &$clusters, &$processed, &$clusterIds) {
             foreach ($tweets as $tweetData) {
                 $tweetId = (string) ($tweetData['tweet_id'] ?? '');
 
-                if ($tweetId === '' || RawTweet::where('tweet_id', $tweetId)->exists()) {
+                if ($tweetId === '') {
                     $skipped++;
+                    continue;
+                }
+
+                $existingTweet = RawTweet::query()
+                    ->with('storyClusterItem')
+                    ->where('tweet_id', $tweetId)
+                    ->first();
+
+                if ($existingTweet) {
+                    $skipped++;
+
+                    if ($existingTweet->storyClusterItem?->story_cluster_id) {
+                        $clusterIds[] = $existingTweet->storyClusterItem->story_cluster_id;
+                    }
+
                     continue;
                 }
 
@@ -73,7 +90,9 @@ class TweetIngestionService
 
                 $tweet->update(['is_processed' => true]);
                 $created++;
+                $processed++;
                 $clusters += $cluster->wasRecentlyCreated ? 1 : 0;
+                $clusterIds[] = $cluster->id;
             }
 
             $latestTweetId = collect($tweets)->pluck('tweet_id')->filter()->map(fn ($id) => (string) $id)->sortDesc()->first();
@@ -91,7 +110,14 @@ class TweetIngestionService
             'context_json' => compact('created', 'skipped', 'clusters'),
         ]);
 
-        return compact('created', 'skipped', 'clusters');
+        return [
+            'created' => $created,
+            'skipped' => $skipped,
+            'clusters' => $clusters,
+            'processed' => $processed,
+            'story_cluster_ids' => array_values(array_unique($clusterIds)),
+            'last_tweet_id' => collect($tweets)->pluck('tweet_id')->filter()->map(fn ($id) => (string) $id)->sortDesc()->first(),
+        ];
     }
 
     private function normalize(string $text): string
