@@ -45,4 +45,21 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('story-clusters', [StoryClusterController::class, 'index'])->name('story-clusters.index');
     Route::get('story-clusters/{storyCluster}', [StoryClusterController::class, 'show'])->name('story-clusters.show');
     Route::get('scan-histories', [ScanHistoryController::class, 'index'])->name('scan-histories.index');
+
+    // Twscrape Yönetimi
+    Route::prefix('twscrape')->name('twscrape.')->group(function () {
+        Route::get('accounts', [\App\Http\Controllers\Admin\Twscrape\TwscrapeAccountController::class, 'index'])->name('accounts.index');
+        Route::get('accounts/{username}', [\App\Http\Controllers\Admin\Twscrape\TwscrapeAccountController::class, 'show'])->name('accounts.show');
+        Route::post('accounts/{username}/toggle', [\App\Http\Controllers\Admin\Twscrape\TwscrapeAccountController::class, 'toggle'])->name('accounts.toggle');
+        Route::put('accounts/{username}/weight', [\App\Http\Controllers\Admin\Twscrape\TwscrapeAccountController::class, 'updateWeight'])->name('accounts.weight');
+        
+        Route::get('stats', [\App\Http\Controllers\Admin\Twscrape\TwscrapeStatController::class, 'index'])->name('stats.index');
+        
+        Route::get('commands', [\App\Http\Controllers\Admin\Twscrape\TwscrapeCommandController::class, 'index'])->name('commands.index');
+        Route::post('commands', [\App\Http\Controllers\Admin\Twscrape\TwscrapeCommandController::class, 'execute'])->name('commands.execute');
+        
+        Route::get('health', [\App\Http\Controllers\Admin\Twscrape\TwscrapeHealthController::class, 'index'])->name('health.index');
+        
+        Route::get('logs', [\App\Http\Controllers\Admin\Twscrape\TwscrapeLogController::class, 'index'])->name('logs.index');
+    });
 });

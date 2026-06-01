@@ -733,3 +733,15 @@ Tweet ID tekrar kontrolünden ayrı olarak, haber benzerliği için normalize ed
 * Aynı tweet tekrar kaydedilmez: `tweet_id` kontrolü ile engellenir.
 * Benzer haberler gruplanır: URL ve metin benzerliği ile story cluster'a bağlanır.
 * Fetch aşamasında sadece son N tweet istenir; geçmişteki tüm tweetler baştan sona taranmaz.
+
+---
+
+## 6. Twscrape Yönetim Paneli (`/admin/twscrape/*`)
+
+Sistemin Twscrape altyapısını ve X hesaplarını (scraper) yönetmek için geliştirilmiş özel paneldir. Mevcut `accounts.db` SQLite veritabanı ile Laravel ana veritabanı entegre çalışır.
+
+* **Hesaplar (`/admin/twscrape/accounts`)**: `accounts.db` içerisindeki hesaplar listelenir. Hesapların ağırlıkları (weight), aktif/pasif durumları ve kullanım istatistikleri yönetilir. Sistem **"Weighted Round Robin"** mantığı ile en yüksek ağırlığa sahip ve en uzun süredir kullanılmayan hesabı seçerek API limit (rate limit) riskini dağıtır.
+* **Kullanım İstatistikleri (`/admin/twscrape/stats`)**: Hangi hesabın toplam kaç defa kullanıldığı, kaç kez hata aldığı ve yük dağılım oranları görsel olarak listelenir.
+* **Komutlar (`/admin/twscrape/commands`)**: Sunucu terminaline bağlanmaya gerek kalmadan Twscrape CLI komutları (`accounts`, `stats`, `login_accounts`, `relogin` vb.) doğrudan panel üzerinden çalıştırılır ve terminal çıktısı ekranda gösterilir.
+* **Sağlık Durumu (`/admin/twscrape/health`)**: `accounts.db` veritabanının erişilebilirliği, aktif hesap sayısı, hatalı hesaplar ve en son başarılı/başarısız scraping zamanları izlenir.
+* **İşlem Logları (`/admin/twscrape/logs`)**: Twscrape üzerinden atılan tüm login denemeleri, komut çalıştırmaları ve fetch işlemleri, işlem süresi (ms) ve başarılı/başarısız durumlarıyla birlikte loglanarak geriye dönük takibi sağlanır.
