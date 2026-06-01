@@ -9,3 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('news:fetch-due-sources')->everyMinute()->withoutOverlapping();
+
+Schedule::job(new \App\Jobs\PoolSelectionJob)->everyMinute()->withoutOverlapping();

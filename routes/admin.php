@@ -3,6 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Admin\PoolHistoryController;
+use App\Http\Controllers\Admin\PoolSelectionController;
+use App\Http\Controllers\Admin\PoolSettingController;
 use App\Http\Controllers\Admin\RawTweetController;
 use App\Http\Controllers\Admin\ScanHistoryController;
 use App\Http\Controllers\Admin\SourceAccountController;
@@ -45,6 +48,15 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('story-clusters', [StoryClusterController::class, 'index'])->name('story-clusters.index');
     Route::get('story-clusters/{storyCluster}', [StoryClusterController::class, 'show'])->name('story-clusters.show');
     Route::get('scan-histories', [ScanHistoryController::class, 'index'])->name('scan-histories.index');
+
+    // Havuz Yonetimi
+    Route::get('pool-settings', [PoolSettingController::class, 'edit'])->name('pool-settings.edit');
+    Route::put('pool-settings', [PoolSettingController::class, 'update'])->name('pool-settings.update');
+
+    Route::get('pool-selection', [PoolSelectionController::class, 'index'])->name('pool-selection.index');
+
+    Route::get('pool-history', [PoolHistoryController::class, 'index'])->name('pool-history.index');
+    Route::get('pool-history/{poolBatch}', [PoolHistoryController::class, 'show'])->name('pool-history.show');
 
     // Twscrape Yönetimi
     Route::prefix('twscrape')->name('twscrape.')->group(function () {

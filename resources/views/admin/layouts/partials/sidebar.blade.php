@@ -64,6 +64,34 @@
     </nav>
 
     <nav class="nav-section">
+        <div class="nav-label">Havuz Yonetimi</div>
+        <a class="nav-link {{ request()->routeIs('admin.pool-settings.*') ? 'is-active' : '' }}" href="{{ route('admin.pool-settings.edit') }}">
+            <svg viewBox="0 0 24 24">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span>Havuz Ayarlari</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.pool-selection.*') ? 'is-active' : '' }}" href="{{ route('admin.pool-selection.index') }}">
+            <svg viewBox="0 0 24 24">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <span>Tweet Havuzu</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.pool-history.*') ? 'is-active' : '' }}" href="{{ route('admin.pool-history.index') }}">
+            <svg viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+            </svg>
+            <span>Havuz Gecmisi</span>
+        </a>
+    </nav>
+
+    <nav class="nav-section">
         <div class="nav-label">Twscrape Yönetimi</div>
         <a class="nav-link {{ request()->routeIs('admin.twscrape.accounts.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.accounts.index') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -107,6 +135,7 @@
         </a>
     </nav>
 
+    {{--
     <nav class="nav-section">
         <div class="nav-label">Örnek Başlıklar</div>
         <a class="nav-link" href="charts.html">
@@ -134,6 +163,7 @@
             </div>
         </div>
     </nav>
+    --}}
 
     <div class="sidebar-footer">
         <div class="workspace">
