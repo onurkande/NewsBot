@@ -30,6 +30,8 @@ class SourceAccountController extends Controller
                 'priority_score' => 50,
                 'trust_score' => 50,
                 'check_interval_minutes' => 15,
+                'min_check_interval_minutes' => 10,
+                'max_check_interval_minutes' => 20,
             ]),
             'categories' => SourceCategory::orderBy('name')->get(),
         ]);

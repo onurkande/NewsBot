@@ -71,19 +71,35 @@
     </div>
 
     <div class="field">
-        <label class="field-label" for="check_interval_minutes">Kontrol aralığı <span class="req">*</span></label>
+        <label class="field-label" for="min_check_interval_minutes">Minimum kontrol süresi <span class="req">*</span></label>
         <input
-            class="input @error('check_interval_minutes') is-invalid @enderror"
-            id="check_interval_minutes"
-            name="check_interval_minutes"
+            class="input @error('min_check_interval_minutes') is-invalid @enderror"
+            id="min_check_interval_minutes"
+            name="min_check_interval_minutes"
             type="number"
             min="1"
             max="1440"
-            value="{{ old('check_interval_minutes', $account->check_interval_minutes) }}"
+            value="{{ old('min_check_interval_minutes', $account->min_check_interval_minutes ?: $account->check_interval_minutes) }}"
             required
         >
-        <div class="field-help">Dakika cinsinden. Örnek: sıcak kaynaklar için 5, normal kaynaklar için 15.</div>
-        @error('check_interval_minutes') <div class="field-error">{{ $message }}</div> @enderror
+        <div class="field-help">Dakika cinsinden. Örnek: 10.</div>
+        @error('min_check_interval_minutes') <div class="field-error">{{ $message }}</div> @enderror
+    </div>
+
+    <div class="field">
+        <label class="field-label" for="max_check_interval_minutes">Maksimum kontrol süresi <span class="req">*</span></label>
+        <input
+            class="input @error('max_check_interval_minutes') is-invalid @enderror"
+            id="max_check_interval_minutes"
+            name="max_check_interval_minutes"
+            type="number"
+            min="1"
+            max="1440"
+            value="{{ old('max_check_interval_minutes', $account->max_check_interval_minutes ?: $account->check_interval_minutes) }}"
+            required
+        >
+        <div class="field-help">Sistem bu aralıkta rastgele bir sonraki taramayı hesaplar.</div>
+        @error('max_check_interval_minutes') <div class="field-error">{{ $message }}</div> @enderror
     </div>
 
     <div class="field span-2">

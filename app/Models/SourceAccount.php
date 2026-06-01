@@ -18,6 +18,10 @@ class SourceAccount extends Model
         'display_name',
         'priority_score',
         'check_interval_minutes',
+        'min_check_interval_minutes',
+        'max_check_interval_minutes',
+        'next_check_interval_minutes',
+        'next_check_at',
         'is_active',
         'last_checked_at',
         'last_seen_tweet_id',
@@ -32,8 +36,12 @@ class SourceAccount extends Model
             'is_active' => 'boolean',
             'limited_initial_fetch_pending' => 'boolean',
             'last_checked_at' => 'datetime',
+            'next_check_at' => 'datetime',
             'priority_score' => 'integer',
             'check_interval_minutes' => 'integer',
+            'min_check_interval_minutes' => 'integer',
+            'max_check_interval_minutes' => 'integer',
+            'next_check_interval_minutes' => 'integer',
             'trust_score' => 'integer',
         ];
     }
@@ -48,6 +56,11 @@ class SourceAccount extends Model
         return $this->hasMany(RawTweet::class);
     }
 
+    public function scanHistories(): HasMany
+    {
+        return $this->hasMany(ClusterScanHistory::class);
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
@@ -57,8 +70,8 @@ class SourceAccount extends Model
     {
         return $query->active()
             ->where(function (Builder $query) {
-                $query->whereNull('last_checked_at')
-                    ->orWhereRaw('last_checked_at <= DATE_SUB(NOW(), INTERVAL check_interval_minutes MINUTE)');
+                $query->whereNull('next_check_at')
+                    ->orWhere('next_check_at', '<=', now());
             });
     }
 }

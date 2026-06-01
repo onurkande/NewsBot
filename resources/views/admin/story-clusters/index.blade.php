@@ -65,7 +65,7 @@
                 class="data-table"
                 data-selection-table
                 data-selection-key="{{ $selectionKey }}"
-                style="margin: 0 22px; min-width: 1000px;"
+                style="margin: 0 22px; min-width: 1240px;"
             >
                 <thead>
                     <tr>
@@ -86,7 +86,10 @@
                                 </a>
                             </th>
                         @endforeach
+                        <th>Sonraki Tarama Süresi</th>
+                        <th>Sonraki Tarama</th>
                         <th>Durum</th>
+                        <th style="text-align: right">İşlemler</th>
                     </tr>
                 </thead>
 
@@ -126,11 +129,32 @@
 
                             <td><span class="badge info">{{ $cluster->items_count }} tweet</span></td>
 
+                            <td class="data-cell-mono">
+                                {{ $cluster->mainSourceAccount?->next_check_interval_minutes ? $cluster->mainSourceAccount->next_check_interval_minutes.' dk' : '-' }}
+                            </td>
+
+                            <td>
+                                @if ($cluster->mainSourceAccount?->next_check_at)
+                                    <div class="data-cell-mono">{{ $cluster->mainSourceAccount->next_check_at->format('Y-m-d H:i') }}</div>
+                                    <div class="data-cell-user-email">{{ $cluster->mainSourceAccount->next_check_at->diffForHumans() }}</div>
+                                @else
+                                    <span class="badge primary">Sırada</span>
+                                @endif
+                            </td>
+
                             <td><span class="tag t-new">{{ $cluster->status }}</span></td>
+
+                            <td>
+                                <div class="data-cell-actions" style="justify-content: flex-end">
+                                    <a class="btn--icon" href="{{ route('admin.story-clusters.show', $cluster) }}" aria-label="Detay">
+                                        <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                                    </a>
+                                </div>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8">
+                            <td colspan="11">
                                 <x-admin.empty-state
                                     title="Henüz story cluster yok"
                                     description="Algoritma yeni hikayeler oluşturduğunda burada listelenecektir."
