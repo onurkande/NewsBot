@@ -1,59 +1,340 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# NewsBot
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Modern, modüler ve tamamen otomatik çalışan bir X (Twitter) haber toplama, analiz etme, içerik üretme ve yayınlama sistemidir.
 
-## About Laravel
+## Proje Hakkında
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+NewsBot, belirlenen X kaynak hesaplarını düzenli olarak takip eden, bu hesaplardan gelen tweetleri toplayan, etkileşim ve öncelik puanlarına göre değerlendiren, haber değeri taşıyan içerikleri seçen ve yapay zeka yardımıyla haber formatına dönüştüren bir otomasyon platformudur.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Sistem yalnızca veri toplamakla kalmaz;
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+* Tweet toplar
+* Tweetleri analiz eder
+* Benzer içerikleri gruplayabilir
+* Haber değeri hesaplar
+* En değerli içerikleri seçer
+* Yapay zeka ile haber üretir
+* X üzerinde otomatik paylaşım yapar
+* Tüm süreci loglar ve izler
 
-## Learning Laravel
+## Ekran Görüntüleri
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+<!--
+### Dashboard
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+![Dashboard](docs/images/dashboard.png)
+-->
 
-## Laravel Sponsors
+### Kaynak Hesap Yönetimi
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+![Source Accounts](docs/images/source-accounts.png)
 
-### Premium Partners
+### Tweet Havuzu
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+![Pool Selection](docs/images/pool-selection.png)
 
-## Contributing
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+![Raw Tweets](docs/images/raw-tweets.png)
 
-## Code of Conduct
+---
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Kullanılan Teknolojiler
 
-## Security Vulnerabilities
+### Backend
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+* Laravel 12
+* PHP 8.3+
+* MySQL
+* Laravel Queue
+* Laravel Scheduler
 
-## License
+### Python Servisleri
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+* Python 3.11
+
+#### twscrape
+
+Kaynak hesaplardan tweet toplama işlemleri için kullanılır.
+
+Proje:
+https://github.com/vladkens/twscrape
+
+#### gpt4free
+
+AI içerik üretimi ve haber oluşturma işlemleri için kullanılır.
+
+Proje:
+https://github.com/xtekky/gpt4free
+
+#### twitter-api-client
+
+Oluşturulan içeriklerin X hesabında paylaşılması için kullanılır.
+
+Proje:
+https://github.com/trevorhobenshield/twitter-api-client
+
+---
+
+## Sistem Mimarisi
+
+```text
+Laravel
+│
+├── Scheduler
+├── Queue
+├── Admin Panel
+├── Monitoring
+├── Logging
+│
+└── Python Services
+    ├── twscrape
+    ├── gpt4free
+    └── twitter-api-client
+```
+
+İş akışı:
+
+```text
+Kaynak Hesaplar
+        ↓
+Tweet Toplama
+        ↓
+Ham Tweetler
+        ↓
+Story Cluster
+        ↓
+Tweet Havuzu
+        ↓
+AI Üretimi
+        ↓
+Paylaşım
+        ↓
+Loglama ve Monitoring
+```
+
+---
+
+## Yönetim Paneli Modülleri
+
+### Kaynak Hesaplar
+
+Takip edilen X hesaplarının yönetimi.
+
+### Kaynak Kategorileri
+
+Hesapların kategorilere ayrılması.
+
+### Ham Tweetler
+
+Toplanan tüm tweetlerin görüntülenmesi.
+
+### Story Clusters
+
+Benzer haberlerin gruplanması.
+
+### Tweet Havuzu
+
+Puanlama algoritması ile en değerli içeriklerin seçilmesi.
+
+### Twscrape Yönetimi
+
+Scraper hesaplarının yönetimi.
+
+### Monitoring
+
+Sistem sağlık durumunun takibi.
+
+### Loglama
+
+Tüm sistem işlemlerinin kayıt altına alınması.
+
+---
+
+## Kurulum
+
+### Repository
+
+```bash
+git clone https://github.com/onurkande/NewsBot.git
+
+cd NewsBot
+```
+
+### Laravel Kurulumu
+
+```bash
+composer install
+```
+
+```bash
+cp .env.example .env
+```
+
+```bash
+php artisan key:generate
+```
+
+Veritabanı ayarlarını `.env` dosyasında yapılandırın.
+
+```bash
+php artisan migrate
+```
+
+### Frontend Paketleri
+
+```bash
+npm install
+```
+
+```bash
+npm run build
+```
+
+---
+
+## Python Servis Kurulumu
+
+### 1. twscrape
+
+Dizin:
+
+```bash
+services/twscrape
+```
+
+Python 3.11 sanal ortam oluşturun:
+
+```bash
+python -m venv .venv
+```
+
+Aktifleştirin:
+
+Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+Linux / macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Kurulum:
+
+```bash
+pip install twscrape
+```
+
+Ardından `accounts.db` oluşturulmalı ve X hesapları eklenmelidir.
+
+Detaylı kurulum:
+
+https://github.com/vladkens/twscrape
+
+---
+
+### 2. gpt4free
+
+Dizin:
+
+```bash
+services/gpt4free
+```
+
+```bash
+python -m venv .venv
+```
+
+```bash
+pip install -U g4f[all]
+```
+
+Detaylı kurulum:
+
+https://github.com/xtekky/gpt4free
+
+---
+
+### 3. twitter-api-client
+
+Dizin:
+
+```bash
+services/twitter-api-client
+```
+
+```bash
+python -m venv .venv
+```
+
+```bash
+pip install twitter-api-client -U
+```
+
+Detaylı kurulum:
+
+https://github.com/trevorhobenshield/twitter-api-client
+
+---
+
+## Sistemi Çalıştırma
+
+Laravel:
+
+```bash
+php artisan serve
+```
+
+Queue Worker:
+
+```bash
+php artisan queue:work
+```
+
+Scheduler:
+
+```bash
+php artisan schedule:work
+```
+
+---
+
+## Temel Özellikler
+
+* Kaynak hesap yönetimi
+* Tweet toplama sistemi
+* Story Cluster sistemi
+* Tweet havuz sistemi
+* Öncelik puanlama sistemi
+* Etkileşim puanlama sistemi
+* AI içerik üretimi
+* Otomatik paylaşım
+* Monitoring sistemi
+* Health Check sistemi
+* Loglama sistemi
+* Mail bildirim sistemi
+* Queue mimarisi
+
+---
+
+## Yol Haritası
+
+Planlanan geliştirmeler:
+
+* Instagram entegrasyonu
+* Telegram entegrasyonu
+* Discord entegrasyonu
+* Çoklu dil desteği
+* Görsel üretimi
+* Video içerik üretimi
+* Trend analiz sistemi
+* İnsan onay mekanizması
+
+---
+
+## Lisans
+
+MIT License
