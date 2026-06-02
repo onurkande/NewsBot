@@ -745,3 +745,423 @@ Sistemin Twscrape altyapısını ve X hesaplarını (scraper) yönetmek için ge
 * **Komutlar (`/admin/twscrape/commands`)**: Sunucu terminaline bağlanmaya gerek kalmadan Twscrape CLI komutları (`accounts`, `stats`, `login_accounts`, `relogin` vb.) doğrudan panel üzerinden çalıştırılır ve terminal çıktısı ekranda gösterilir.
 * **Sağlık Durumu (`/admin/twscrape/health`)**: `accounts.db` veritabanının erişilebilirliği, aktif hesap sayısı, hatalı hesaplar ve en son başarılı/başarısız scraping zamanları izlenir.
 * **İşlem Logları (`/admin/twscrape/logs`)**: Twscrape üzerinden atılan tüm login denemeleri, komut çalıştırmaları ve fetch işlemleri, işlem süresi (ms) ve başarılı/başarısız durumlarıyla birlikte loglanarak geriye dönük takibi sağlanır.
+
+---
+
+# Tweet Seçim Havuzu Sistemi
+
+Tweet toplama aşamasından sonra çalışan, toplanan tweetler arasından en değerli olanları otomatik olarak seçen, geçmişi kayıt altına alan ve tekrar seçim yapmayan profesyonel bir havuz seçim sistemidir.
+
+Bu aşamada AI API entegrasyonu yapılmaz. Sadece tweetleri toplamak, puanlamak, sıralamak, seçmek ve seçilenleri işaretlemek amaçlanır. AI tarafına gönderme işlemi sonraki geliştirme aşamasında yapılacaktır. Şimdilik `selected_for_ai` ve `ai_sent_at` gibi alanlar hazır tutulur ancak kullanılmaz.
+
+---
+
+## 1. Sistem Çalışma Akışı
+
+Sistem tamamen otomatik çalışır. İş akışı şu şekildedir:
+
+1. Laravel Scheduler her dakika `PoolSelectionJob`'ı tetikler.
+2. Job, `PoolSetting.next_run_at` alanını kontrol eder. Zamanı gelmemişse işlem yapmadan çıkar.
+3. Zamanı geldiyse `NewsCollection\PoolSelectionService::executeSafe()` çağrılır.
+4. Rastgele bir tweet toplama penceresi üretilir (`tweet_window_min` ile `tweet_window_max` arasında).
+5. Son X dakika içinde çekilmiş ve `selected_for_pool = false` olan tweetler aday olarak alınır.
+6. Her aday tweet `PoolScoringService` ile puanlanır.
+7. Tweetler final puana göre azalan sırada sıralanır.
+8. Rastgele bir seçilecek tweet sayısı üretilir (`tweet_count_min` ile `tweet_count_max` arasında).
+9. En yüksek puanlı N tweet seçilir.
+10. Seçilen tweetler `raw_tweets.selected_for_pool = true` ve `selected_at = now()` olarak işaretlenir.
+11. Bir `PoolBatch` kaydı ve tüm adaylar için `PoolBatchItem` kayıtları oluşturulur.
+12. İşlem `system_logs` tablosuna `pool_selection` modülü olarak loglanır.
+13. Rastgele bir bekleme süresi üretilir (`selection_interval_min` ile `selection_interval_max` arasında).
+14. `PoolSetting.next_run_at` güncellenir ve scheduler beklemeye geçer.
+
+---
+
+## 2. Puanlama Algoritması
+
+Her aday tweet için iki temel kriter kullanılarak bir final puan üretilir:
+
+### 2.1 Öncelik Puanı (Priority Score)
+
+Kaynak hesabın `priority_score` alanıdır (0-100). Yüksek öncelikli kaynaklardan gelen tweetler öne çıkar.
+
+### 2.2 Etkileşim Puanı (Engagement Score)
+
+Tweetin ham etkileşim değeri şu formülle hesaplanır:
+
+```
+Raw Engagement = likes + (retweets × 2) + (replies × 1.5) + (quotes × 1.2) + (views × 0.001)
+```
+
+Daha sonra mevcut aday setindeki en yüksek ham etkileşim değerine göre normalize edilir:
+
+```
+Engagement Score = (Raw Engagement / Max Raw Engagement) × 100
+```
+
+Hiç etkileşim yoksa tüm tweetlerin etkileşim puanı 0 olur.
+
+### 2.3 Final Puan
+
+```
+Final Score = (Priority Score × 0.40) + (Engagement Score × 0.60)
+```
+
+Ağırlıklar:
+- **%40** Kaynak Öncelik Puanı
+- **%60** Etkileşim Puanı
+
+Amaç: Yüksek öncelikli kaynaklardan gelen ve yüksek etkileşim alan tweetlerin öne çıkmasıdır.
+
+---
+
+## 3. Tekrar Seçilmeme Kuralı
+
+Bir tweet bir kez havuza seçildikten sonra bir daha asla havuza aday olamaz.
+
+Bu kural `raw_tweets.selected_for_pool` boolean alanı ile sağlanır:
+
+* `selected_for_pool = false` olan tweetler aday olarak değerlendirilir.
+* `selected_for_pool = true` olan tweetler aday havuzundan kesinlikle dışlanır.
+
+Aday olup ancak seçilmeyen tweetler sonraki döngülerde tekrar aday olabilir. Sadece **seçilen** tweetler dışlanır.
+
+---
+
+## 4. Havuz Ayarları
+
+Admin panelde dinamik olarak yönetilen ayarlar tablosudur (`pool_settings`). Sistemde tek bir kayıt bulunur (singleton pattern).
+
+| Alan | Varsayılan | Açıklama |
+|------|------------|----------|
+| `tweet_window_min` | 10 | Tweet toplama penceresi minimum (dakika) |
+| `tweet_window_max` | 40 | Tweet toplama penceresi maksimum (dakika) |
+| `selection_interval_min` | 10 | Seçim çalışma aralığı minimum (dakika) |
+| `selection_interval_max` | 15 | Seçim çalışma aralığı maksimum (dakika) |
+| `tweet_count_min` | 3 | Seçilecek minimum tweet sayısı |
+| `tweet_count_max` | 5 | Seçilecek maksimum tweet sayısı |
+| `is_active` | true | Havuz seçimi aktif mi |
+| `next_run_at` | null | Bir sonraki çalışma zamanı (otomatik hesaplanır) |
+
+Her seçim döngüsünde:
+- Rastgele tweet penceresi: `tweet_window_min` ile `tweet_window_max` arası
+- Rastgele seçilecek tweet sayısı: `tweet_count_min` ile `tweet_count_max` arası
+- Rastgele bekleme süresi: `selection_interval_min` ile `selection_interval_max` arası
+
+---
+
+## 5. Veritabanı Yapısı
+
+### 5.1 pool_settings
+
+Havuz ayarlarının tutulduğu tek kayıtlık tablo.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| tweet_window_min | smallint unsigned | Minimum tweet aralığı (dakika) |
+| tweet_window_max | smallint unsigned | Maksimum tweet aralığı (dakika) |
+| selection_interval_min | smallint unsigned | Minimum seçim aralığı (dakika) |
+| selection_interval_max | smallint unsigned | Maksimum seçim aralığı (dakika) |
+| tweet_count_min | tinyint unsigned | Minimum seçilecek tweet sayısı |
+| tweet_count_max | tinyint unsigned | Maksimum seçilecek tweet sayısı |
+| is_active | boolean | Havuz seçimi aktif mi |
+| next_run_at | timestamp nullable | Bir sonraki çalışma zamanı |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.2 pool_batches
+
+Her seçim döngüsünün kaydedildiği tablo. Batch numarası formatı: `B-{Ymd}-{seq}` (örn: `B-20260601-001`).
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| batch_no | varchar(32) unique | Batch numarası |
+| tweet_window_minutes | smallint unsigned | Kullanılan tweet aralığı |
+| candidate_count | int unsigned | Toplam aday tweet sayısı |
+| selected_count | int unsigned | Seçilen tweet sayısı |
+| wait_duration_minutes | smallint unsigned | Bir sonraki çalışmaya bekleme süresi |
+| next_run_at | timestamp nullable | Bir sonraki çalışma zamanı |
+| started_at | timestamp nullable | Başlangıç zamanı |
+| completed_at | timestamp nullable | Tamamlanma zamanı |
+| status | enum(running, completed, failed) | Batch durumu |
+| error_message | text nullable | Hata mesajı |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.3 pool_batch_items
+
+Her seçim döngüsünde değerlendirilen tüm aday tweetlerin puanları ve seçim durumları.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| pool_batch_id | bigint FK | İlişkili batch |
+| raw_tweet_id | bigint FK | İlişkili tweet |
+| priority_score | decimal(8,2) | Kaynak öncelik puanı (0-100) |
+| engagement_score | decimal(8,2) | Etkileşim puanı (0-100) |
+| final_score | decimal(8,2) | Hesaplanmış final puan |
+| is_selected | boolean | Bu tweet seçildi mi |
+| rank | int unsigned | Sıralama pozisyonu |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.4 raw_tweets (güncelleme)
+
+Havuz seçim sistemine destek olmak için eklenen kolonlar:
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| selected_for_pool | boolean default false | Bir kez havuza seçildi mi |
+| selected_at | timestamp nullable | Seçilme tarihi |
+| selected_for_ai | boolean default false | AI aşamasına seçildi mi (gelecek) |
+| ai_sent_at | timestamp nullable | AI aşamasına gönderilme tarihi (gelecek) |
+
+---
+
+## 6. Job ve Scheduler
+
+### 6.1 PoolSelectionJob
+
+Laravel Queue_job'ıdır. Her dakika scheduler tarafından tetiklenir.
+
+**Akış:**
+1. `PoolSetting::singleton()` ile ayarları alır.
+2. `is_active = false` ise işlem yapmaz.
+3. `next_run_at` gelecekte bir zamansa işlem yapmaz.
+4. `PoolSelectionService::executeSafe()` çağırır.
+5. Başarısızlık durumunda `SystemLog` ve `Alert` kaydı oluşturur.
+
+**Özellikler:**
+- `tries = 2` (maksimum 2 deneme)
+- `withoutOverlapping()` ile aynı anda birden fazla örnek çalışması engellenir.
+
+### 6.2 Scheduler Tanımı
+
+`routes/console.php` dosyasında tanımlıdır:
+
+```php
+Schedule::job(new PoolSelectionJob)->everyMinute()->withoutOverlapping();
+```
+
+---
+
+## 7. Servis Katmanı
+
+İş kuralları Controller'da değil, Service katmanında yer alır.
+
+### 7.1 PoolSelectionService (`app/Services/NewsCollection/PoolSelectionService.php`)
+
+Ana seçim orchestrator'ı. Tüm iş mantığını barındırır:
+
+- `execute()`: Tam seçim akışını yürütür (adayları al, puanla, sırala, seç, işaretle, batch oluştur, logla, sonraki çalışma zamanını hesapla).
+- `executeSafe()`: `execute()`'i try-catch ile sarar. Başarısızlık durumunda failed batch kaydı oluşturur ve sonraki çalışma zamanını günceller.
+- Batch numarası üretimi: `B-{Ymd}-{seq}` formatında, günlük artan sıra numarası ile.
+- `scheduleNextRun()`: Rastgele bekleme süresi hesaplayıp `next_run_at` günceller.
+- Tüm veritabanı yazımları `DB::transaction()` içinde yapılır.
+
+### 7.2 PoolScoringService (`app/Services/NewsCollection/PoolScoringService.php`)
+
+Puanlama hesaplamalarını yapar:
+
+- `scoreCollection()`: Aday tweet koleksiyonunu alır, her tweet için priority_score, engagement_score ve final_score hesaplar.
+- Öncelik puanı: Kaynak hesabın `priority_score` alanı.
+- Etkileşim puanı: Ham etkileşim değerini koleksiyondaki maksimum değere göre 0-100 arası normalize eder.
+- Final puan: `(priority × 0.40) + (engagement × 0.60)` formülüyle hesaplanır.
+
+### 7.3 PoolSettingService (`app/Services/Admin/PoolSettingService.php`)
+
+Admin paneldeki havuz ayarları güncelleme işini yürütür:
+
+- `update()`: Ayarları transaksiyon içinde günceller.
+- Normalizasyon: Minimum değerlerin maksimumlardan büyük olmamasını sağlar.
+
+---
+
+## 8. Admin Panel Sayfaları
+
+### 8.1 Havuz Ayarları (`/admin/pool-settings`)
+
+Tek sayfalık dinamik ayar formudur. Yeni ekleme veya silme yoktur; sadece mevcut tek kayıt güncellenir.
+
+**İçerik:**
+- Tweet Toplama Aralığı (minimum / maksimum dakika)
+- Seçim Çalışma Aralığı (minimum / maksimum dakika)
+- Seçilecek Tweet Sayısı (minimum / maksimum)
+- Havuz Seçimi Aktif/Pasif toggle
+- Bir Sonraki Çalışma Zamanı (salt okunur bilgi)
+- Puanlama Algoritması açıklama kartı
+
+**CRUD Katmanı:**
+- Controller: `PoolSettingController` (edit, update)
+- Request: `PoolSetting\UpdateRequest`
+- Service: `Admin\PoolSettingService`
+- Blade: `pool-settings/edit.blade.php`
+
+### 8.2 Tweet Havuzu (`/admin/pool-selection`)
+
+En son havuz seçim döngüsünün sonuçlarını gösterir.
+
+**Tablo Sütunları:**
+- Tweet ID
+- Kaynak Hesap
+- Tweet İçeriği
+- Öncelik Puanı
+- Etkileşim Puanı
+- Final Puan
+- Sıra
+- Durum (Seçildi / Seçilmedi)
+
+**Görsel Ayrım:**
+- Seçilen tweetler: Yeşil arka plan, `t-active` badge
+- Baraj çizgisi: Seçilenler ile seçilmeyenler arasında görsel ayırıcı
+- Seçilmeyen tweetler: Kırmızı tonlu arka plan, `t-unavail` badge
+
+**Filtreler:**
+- Tüm tweetler / Seçilenler / Seçilmeyenler
+- Arama (tweet içeriği veya ID)
+- Sıralama (final puan, öncelik puanı, etkileşim puanı, sıra)
+
+**CRUD Katmanı:**
+- Controller: `PoolSelectionController` (index)
+- Request: `PoolSelection\IndexRequest`
+- Query: `PoolSelectionQuery`
+- Blade: `pool-selection/index.blade.php`
+
+### 8.3 Havuz Geçmişi (`/admin/pool-history`)
+
+Tüm seçim döngülerinin listesini ve detaylarını gösterir.
+
+**Liste Sütunları:**
+- Batch No
+- Çalışma Tarihi
+- Kullanılan Aralık (dakika)
+- Aday Sayısı
+- Seçilen Sayısı
+- Bekleme Süresi (dakika)
+- Sonraki Çalışma Zamanı
+- Durum (Tamamlanmış / Başarısız)
+- Detay butonu
+
+**Batch Detay Sayfası (`/admin/pool-history/{id}`):**
+
+Özet kartı: Batch no, çalışma tarihi, tweet aralığı, aday sayısı, seçilen sayısı, bekleme süresi, sonraki çalışma, durum.
+
+İki ayrı tablo:
+- **Seçilenler:** Yeşil tonlu, tüm puan detaylarıyla
+- **Seçilmeyenler:** Kırmızı tonlu, tüm puan detaylarıyla
+
+**Filtreler:**
+- Tüm durumlar / Tamamlanmış / Başarısız
+- Arama (batch no)
+- Sıralama (tarih, aday sayısı, seçilen sayısı, bekleme süresi)
+
+**CRUD Katmanı:**
+- Controller: `PoolHistoryController` (index, show)
+- Request: `PoolHistory\IndexRequest`
+- Query: `PoolHistoryQuery`
+- Blade: `pool-history/index.blade.php`, `pool-history/show.blade.php`
+
+---
+
+## 9. Loglama
+
+Her seçim döngüsü `system_logs` tablosuna `pool_selection` modülü olarak loglanır.
+
+**Loglanan bilgiler:**
+- Aday tweet sayısı
+- Seçilen tweet sayısı
+- Kullanılan tweet aralığı (dakika)
+- Bekleme süresi (dakika)
+- Bir sonraki çalışma zamanı
+- Batch numarası
+- Hata durumu (başarısızlık olursa)
+
+Ayrıca başarısızlık durumlarında `alerts` tablosuna `pool_selection_failed` tipinde bildirim kaydı oluşturulur.
+
+---
+
+## 10. Dosya Yapısı
+
+Oluşturulan ve güncellenen dosyalar:
+
+### Yeni Dosyalar
+
+```
+database/migrations/
+  2026_06_01_150001_create_pool_settings_table.php
+  2026_06_01_150002_create_pool_batches_table.php
+  2026_06_01_150003_create_pool_batch_items_table.php
+  2026_06_01_150004_add_pool_flags_to_raw_tweets_table.php
+
+app/Models/
+  PoolSetting.php
+  PoolBatch.php
+  PoolBatchItem.php
+
+app/Services/NewsCollection/
+  PoolScoringService.php
+  PoolSelectionService.php
+
+app/Services/Admin/
+  PoolSettingService.php
+
+app/Jobs/
+  PoolSelectionJob.php
+
+app/Http/Controllers/Admin/
+  PoolSettingController.php
+  PoolSelectionController.php
+  PoolHistoryController.php
+
+app/Http/Requests/Admin/
+  PoolSetting/UpdateRequest.php
+  PoolSelection/IndexRequest.php
+  PoolHistory/IndexRequest.php
+
+app/Queries/Admin/
+  PoolSelectionQuery.php
+  PoolHistoryQuery.php
+
+resources/views/admin/
+  pool-settings/edit.blade.php
+  pool-selection/index.blade.php
+  pool-history/index.blade.php
+  pool-history/show.blade.php
+```
+
+### Güncellenen Dosyalar
+
+```
+app/Models/RawTweet.php              (fillable ve casts güncellendi)
+routes/admin.php                     (pool route'ları eklendi)
+routes/console.php                   (PoolSelectionJob scheduler eklendi)
+resources/views/admin/layouts/partials/sidebar.blade.php  (Havuz menüsü eklendi)
+```
+
+---
+
+## 11. CRUD Mimari Uyumu
+
+Tüm geliştirme mevcut Laravel CRUD mimari dokümantasyonuna uygun olarak yapılmıştır:
+
+| Katman | Standart | Uygulama |
+|--------|----------|----------|
+| Controller | İnce, sadece request alır ve service/query çağırır | ✅ PoolSettingController, PoolSelectionController, PoolHistoryController |
+| FormRequest | Validasyon ve prepareForValidation burada | ✅ UpdateRequest, IndexRequest'ler |
+| Query | Arama, filtre, sıralama, pagination burada | ✅ PoolSelectionQuery, PoolHistoryQuery |
+| Service | Create/update/delete iş mantığı burada | ✅ PoolSettingService, PoolSelectionService, PoolScoringService |
+| Blade | Component tabanlı, _form partial kullanımı | ✅ x-admin.* componentleri kullanıldı |
+| Route | admin middleware grubu, resource ve özel route'lar | ✅ pool-settings, pool-selection, pool-history |
+| Job | Queue job, ShouldQueue trait, failed hook | ✅ PoolSelectionJob |
+
+---
+
+## 12. Sidebar Menü
+
+Yönetim paneli sidebar'ına "Havuz Yönetimi" bölümü eklenmiştir:
+
+```
+Havuz Yönetimi
+├── Havuz Ayarları       /admin/pool-settings
+├── Tweet Havuzu        /admin/pool-selection
+└── Havuz Geçmişi       /admin/pool-history
+```
