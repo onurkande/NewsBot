@@ -1165,3 +1165,493 @@ Havuz Yönetimi
 ├── Tweet Havuzu        /admin/pool-selection
 └── Havuz Geçmişi       /admin/pool-history
 ```
+
+---
+
+# AI Workflow Modülü (Havuz → AI İçerik Üretimi)
+
+Havuz seçiminden sonra seçilen tweetlerin AI ile haberleştirilmesini sağlayan tam kapsamlı üretim sistemidir. Sistem iki provider (GPT4Free ve OpenCode) destekler, kategori bazlı prompt yönetimi kullanır ve manuel onay (review) akışı içerir.
+
+---
+
+## 1. Genel Akış
+
+```
+Pool Selection (havuz seçimi tamamlanır)
+    ↓
+AI Queue Job (completed batch'leri kuyruğa alır)
+    ↓
+AI Queue (pending → processing)
+    ↓
+AI Generation Job (AI provider ile içerik üretir)
+    ↓
+AI Generation (draft durumunda oluşur)
+    ↓
+Review (admin onaylar / reddeder)
+    ↓
+Published (onaylanan içerik yayına hazır)
+```
+
+Her adımda `ai_generation_logs` tablosuna detaylı log kaydı yapılır.
+
+---
+
+## 2. Providerlar
+
+Sistemde iki AI provider bulunur. Admin panelinden aktif provider tek tıkla değiştirilebilir.
+
+### 2.1 GPT4Free
+
+Ücretsiz, Python `g4f` kütüphanesi üzerinden çalışır. API key gerektirmez.
+
+**Çalışma mantığı:**
+1. Laravel `Gpt4freeClient` servisi `Symfony\Component\Process` ile Python scripti başlatır.
+2. Script (`services/gpt4free/ai_generate.py`) model listesini `havuz` dosyasından okur.
+3. Belirtilen model varsa onu dener, yoksa havuzdaki modelleri sırayla dener.
+4. Başarılı yanıt JSON formatında stdout'a yazılır.
+5. Laravel JSON'ı parse eder ve sonucu döndürür.
+
+**Hata yönetimi:**
+- İlk model çalışmazsa otomatik olarak sıradaki modele geçer.
+- Tüm modeller başarısız olursa hata loglanır ve exception fırlatılır.
+- Windows ortamında `SYSTEMROOT`/`USERPROFILE` ortam değişkenleri otomatik aktarılır.
+
+**Model havuzu:**
+`services/gpt4free/havuz` dosyasında tanımlıdır. Her satırda bir provider adı bulunur. Dosya düzenlenerek model listesi değiştirilebilir, kod değişikliği gerektirmez.
+
+### 2.2 OpenCode
+
+OpenAI-compatible HTTP API üzerinden çalışır. API key, Base URL ve Model gerektirir.
+
+**Varsayılan ayarlar:**
+- Base URL: `https://opencode.ai/zen/go/v1`
+- Model: `deepseek-v4-flash`
+
+**Çalışma mantığı:**
+1. `OpenCodeProvider` servisi `GuzzleHttp` ile HTTP POST isteği gönderir.
+2. Endpoint: `{base_url}/chat/completions`
+3. Header: `Authorization: Bearer {api_key}`
+4. Body: OpenAI-compatible JSON formatı.
+5. Response parse edilerek içerik döndürülür.
+
+**Admin panelden değiştirilebilir alanlar:**
+- OpenCode API Key
+- OpenCode Base URL
+- OpenCode Model
+
+---
+
+## 3. Prompt Sistemi
+
+### 3.1 Kategori Bazlı Prompt Yönetimi
+
+Promptlar `source_categories` tablosuna bağlıdır. Her kategorinin kendi aktif promptu olabilir.
+
+**Kural:** Her kategoride sadece bir adet aktif prompt bulunabilir. Yeni prompt aktif edildiğinde aynı kategorideki diğer aktif prompt otomatik olarak pasif yapılır.
+
+**Kullanım akışı:**
+1. Tweet'in geldiği kaynak hesabın `category_id` değeri alınır.
+2. O kategoriye ait aktif prompt aranır.
+3. Kategoriye özel prompt yoksa global aktif prompt (kategori boş olan) kullanılır.
+4. O da yoksa sistem varsayılan prompt'u kullanır.
+
+### 3.2 Değişkenler (Placeholder)
+
+Prompt metinleri değişken destekler. AI isteği gönderilmeden önce sistem bu değişkenleri gerçek verilerle değiştirir.
+
+**Zorunlu değişken:**
+
+| Değişken | Açıklama |
+|----------|----------|
+| `{tweet_content}` | Seçilen tüm tweet metinleri, numaralandırılmış ve kaynak kullanıcı adlarıyla birlikte |
+
+**Opsiyonel değişkenler:**
+
+| Değişken | Açıklama |
+|----------|----------|
+| `{tweet_count}` | Seçilen tweet sayısı |
+| `{sources}` | Kaynak hesap kullanıcı adları (virgülle ayrılmış) |
+| `{total_score}` | Tweetlerin ortalama final puanı |
+| `{first_tweet}` | İlk tweetin ham metni |
+
+**Validasyon:** Prompt kaydedilirken sistem metin içindeki tüm `{...}` ifadelerini tarar. Geçersiz bir placeholder (örn: `{tweet_contents}`) tespit edilirse kayıt reddedilir ve kullanıcı uyarı mesajı görür.
+
+### 3.3 Prompt Şablonu Örneği
+
+```
+Aşağıdaki tweetleri profesyonel haber dilinde yeniden yaz:
+
+{tweet_content}
+
+Haber başlığı ve gövde metni oluştur. Toplam 250-400 kelime arasında olsun.
+
+Çıktı formatı:
+BAŞLIK: [Haber Başlığı]
+İÇERİK: [Haber Metni]
+```
+
+---
+
+## 4. AI Ayarları (`/admin/ai-settings`)
+
+AI üretim sisteminin tüm konfigürasyonu bu sayfadan yönetilir. Tabloda tek kayıt bulunur (singleton pattern).
+
+### 4.1 Ayar Alanları
+
+| Alan | Açıklama |
+|------|----------|
+| AI Provider | Aktif provider: GPT4Free veya OpenCode |
+| Aktif Prompt | Varsayılan olarak kullanılacak prompt şablonu |
+| Tekrar Deneme Sayısı | Başarısız olunca kaç kez deneneceği (varsayılan: 3) |
+| Timeout | AI isteği için maksimum bekleme süresi saniye (varsayılan: 300) |
+| Eş Zamanlı Job Sayısı | Aynı anda çalışabilecek AI job sayısı (varsayılan: 1) |
+| AI Üretimini Aktif Et | Tüm AI üretimini açıp kapatır |
+
+### 4.2 OpenCode'a Özel Alanlar
+
+| Alan | Açıklama |
+|------|----------|
+| OpenCode API Key | OpenCode servisi için API anahtarı |
+| OpenCode Base URL | API endpoint adresi |
+| OpenCode Model | Kullanılacak model adı (dinamik, admin istediği zaman değiştirebilir) |
+
+### 4.3 Bağlantı Testi
+
+Ayarlar sayfasının alt kısmında "Bağlantı Testi" bölümü bulunur.
+
+**Kullanım:**
+1. Test promptu yazılır (varsayılan: "Merhaba, bu bir bağlantı testidir.")
+2. "Bağlantıyı Test Et" butonuna basılır.
+3. Aktif provider'a test isteği gönderilir.
+4. Sonuç sayfa içinde gösterilir (başarılı/hata, provider, model, süre).
+
+Bu özellik hem GPT4Free hem OpenCode için çalışır.
+
+---
+
+## 5. Veritabanı Yapısı
+
+### 5.1 ai_settings
+
+AI ayarlarının tutulduğu tek kayıtlık tablo.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| provider | varchar | Aktif provider: gpt4free / opencode |
+| model_name | varchar nullable | GPT4Free için opsiyonel model adı |
+| retry_count | tinyint unsigned | Tekrar deneme sayısı |
+| timeout | int unsigned | Timeout süresi (saniye) |
+| concurrent_jobs | tinyint unsigned | Eş zamanlı job sayısı |
+| active_prompt_id | bigint FK nullable | Aktif prompt şablonu |
+| opencode_api_key | text nullable | OpenCode API anahtarı |
+| opencode_base_url | varchar nullable | OpenCode Base URL |
+| opencode_model | varchar nullable | OpenCode model adı |
+| is_active | boolean | AI üretimi aktif mi |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.2 prompts
+
+AI prompt şablonlarının tutulduğu tablo. SoftDeletes kullanılır.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| name | varchar | Prompt adı |
+| source_category_id | bigint FK nullable | Bağlı olduğu kaynak kategori |
+| prompt_text | text | Prompt şablon metni |
+| version | smallint unsigned | Versiyon numarası |
+| is_active | boolean | Bu prompt aktif mi |
+| created_at, updated_at | timestamps | Zaman damgaları |
+| deleted_at | timestamp nullable | Soft delete |
+
+### 5.3 ai_queues
+
+Havuz seçiminden sonra AI kuyruğuna alınan batch'lerin kaydı.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| pool_batch_id | bigint FK | İlişkili havuz batch'i |
+| batch_no | varchar unique | Batch numarası |
+| tweet_count | int unsigned | Seçilen tweet sayısı |
+| story_score | decimal(8,2) | Ortalama final puan |
+| status | varchar | Durum: pending / processing / completed / failed |
+| error_message | text nullable | Hata mesajı |
+| started_at | timestamp nullable | İşlem başlangıcı |
+| completed_at | timestamp nullable | İşlem bitişi |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.4 ai_generations
+
+AI tarafından üretilen içeriklerin kaydı.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| ai_queue_id | bigint FK | İlişkili AI kuyruk kaydı |
+| prompt_id | bigint FK nullable | Kullanılan prompt şablonu |
+| model | varchar nullable | Kullanılan model adı |
+| prompt_version | smallint unsigned | Prompt versiyonu |
+| title | varchar nullable | Üretilen haber başlığı |
+| input | json nullable | Girdi verisi (tweet listesi) |
+| prompt | text nullable | Ham prompt şablonu |
+| full_prompt | text nullable | AI'ye gönderilen tam prompt |
+| ai_response | longText nullable | AI'dan gelen ham yanıt |
+| generated_news | text nullable | Parse edilmiş haber metni |
+| token_usage | json nullable | Token bilgileri |
+| duration | int unsigned | İşlem süresi (milisaniye) |
+| status | varchar | Durum: draft / approved / rejected / published |
+| error | text nullable | Hata mesajı |
+| generated_at | timestamp nullable | Üretim zamanı |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.5 ai_generation_items
+
+Her AI üretiminde hangi tweetlerin kullanıldığını gösteren ilişki tablosu.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| ai_generation_id | bigint FK | İlişkili AI üretimi |
+| raw_tweet_id | bigint FK | İlişkili tweet |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+### 5.6 ai_generation_logs
+
+AI workflow boyunca tüm işlemlerin loglandığı tablo.
+
+| Kolon | Tür | Açıklama |
+|-------|-----|----------|
+| id | bigint | Birincik anahtar |
+| ai_queue_id | bigint FK nullable | İlişkili AI kuyruk kaydı |
+| ai_generation_id | bigint FK nullable | İlişkili AI üretimi |
+| level | varchar | Log seviyesi: info / warning / error / critical |
+| message | text | Log mesajı |
+| context_json | json nullable | Ek bağlam verisi |
+| created_at, updated_at | timestamps | Zaman damgaları |
+
+---
+
+## 6. Job Mimarisi
+
+### 6.1 AIQueueJob
+
+Her dakika scheduler tarafından tetiklenir. Completed durumundaki PoolBatch'leri AI kuyruğuna alır.
+
+**Akış:**
+1. `status = completed` ve `aiQueue` ilişkisi olmayan PoolBatch'leri bulur.
+2. Her batch için `AiQueueService::createFromPoolBatch()` çağırır.
+3. Seçili tweet'leri sayar, ortalama final puanı hesaplar.
+4. `ai_queues` tablosuna kayıt oluşturur.
+5. `raw_tweets.selected_for_ai = true` ve `ai_sent_at = now()` olarak işaretler.
+6. `AIGenerationJob` dispatch eder.
+
+### 6.2 AIGenerationJob
+
+AI provider ile içerik üretimini yürütür.
+
+**Akış:**
+1. AiQueue kaydını `processing` durumuna alır.
+2. Ayarlardan aktif provider'ı belirler.
+3. Seçili tweet'leri toplar.
+4. Tweet'in kategorisine göre aktif prompt'u bulur.
+5. Prompt değişkenlerini gerçek verilerle değiştirir.
+6. AI provider'a istek gönderir.
+7. Sonucu `ai_generations` tablosuna kaydeder.
+8. AiQueue'yu `completed` durumuna alır.
+9. Başarısız olursa `failed` durumuna alır ve hata loglar.
+
+---
+
+## 7. Admin Panel Sayfaları
+
+### 7.1 AI Ayarları (`/admin/ai-settings`)
+
+Tek sayfalık konfigürasyon formu ve bağlantı testi.
+
+**İçerik:**
+- Provider seçimi (GPT4Free / OpenCode)
+- OpenCode'a özel alanlar (API Key, Base URL, Model)
+- Genel ayarlar (retry, timeout, concurrent jobs)
+- Aktif prompt seçimi
+- Bağlantı testi bölümü
+
+### 7.2 Prompt Yönetimi (`/admin/prompts`)
+
+Prompt şablonlarının CRUD yönetimi.
+
+**İşlemler:**
+- Yeni prompt oluşturma
+- Prompt düzenleme
+- Soft delete ile silme
+- Toplu silme
+- Aktif/Pasif yapma (aynı kategorideki diğerleri otomatik pasif yapılır)
+
+**Form alanları:**
+- Prompt Adı
+- Kategori (source_categories dropdown)
+- Versiyon
+- Prompt Metni (değişken destekli)
+- Aktif/Pasif
+
+### 7.3 AI Kuyruğu (`/admin/ai-queue`)
+
+AI kuyruğuna alınan batch'lerin listesi.
+
+**Tablo sütunları:**
+- ID
+- Tarih
+- Batch No
+- Tweet Sayısı
+- Hikaye Puanı
+- Durum (Bekliyor / İşleniyor / Tamamlandı / Başarısız)
+
+**Detay sayfası (`/admin/ai-queue/{id}`):**
+- Kuyruk bilgileri
+- İlişkili AI üretimi linki
+- İşlem logları
+
+### 7.4 AI Üretimleri (`/admin/ai-generations`)
+
+AI tarafından üretilen içeriklerin listesi ve detayları.
+
+**Liste sütunları:**
+- ID
+- Tarih
+- Başlık
+- Model
+- Prompt Versiyon
+- Süre (ms)
+- Durum (Taslak / Onaylandı / Reddedildi / Yayınlandı)
+
+**Detay sayfası (`/admin/ai-generations/{id}`):**
+- Üretim bilgileri (model, versiyon, süre)
+- Token kullanımı
+- Review butonları (Onayla / Reddet / Yayınla)
+- Kullanılan tweetler
+- Ham prompt
+- Tam prompt (AI'ye gönderilen)
+- Üretilen haber metni
+- Hata detayı (varsa)
+- İşlem logları
+
+---
+
+## 8. Review (Onay) Akışı
+
+AI üretimi tamamlandığında `draft` durumunda oluşur. Admin panelinden manuel onay süreci başlar.
+
+**Durum geçişleri:**
+
+```
+draft → approved  (Onayla butonu)
+draft → rejected  (Reddet butonu)
+approved → rejected  (Reddet butonu)
+approved → published  (Yayınla butonu)
+```
+
+Her geçiş `ai_generation_logs` tablosuna loglanır.
+
+---
+
+## 9. Sidebar Menü
+
+Yönetim paneli sidebar'ına "AI Yönetimi" bölümü eklenmiştir:
+
+```
+AI Yönetimi
+├── AI Ayarları           /admin/ai-settings
+├── AI Kuyruğu            /admin/ai-queue
+├── AI Üretimleri         /admin/ai-generations
+└── Prompt Yönetimi       /admin/prompts
+```
+
+---
+
+## 10. Dosya Yapısı
+
+### Yeni Dosyalar
+
+```
+database/migrations/
+  2026_06_02_100001_create_prompts_table.php
+  2026_06_02_100002_create_ai_settings_table.php
+  2026_06_02_100003_create_ai_queues_table.php
+  2026_06_02_100004_create_ai_generations_table.php
+  2026_06_02_100005_create_ai_generation_items_table.php
+  2026_06_02_100006_create_ai_generation_logs_table.php
+  2026_06_02_100007_update_ai_settings_for_providers.php
+  2026_06_02_100008_add_source_category_to_prompts.php
+
+services/gpt4free/
+  ai_generate.py
+
+app/Models/
+  AiSetting.php
+  Prompt.php
+  AiQueue.php
+  AiGeneration.php
+  AiGenerationItem.php
+  AiGenerationLog.php
+
+app/Services/NewsCollection/
+  Gpt4freeClient.php
+  Gpt4freeProvider.php
+  OpenCodeProvider.php
+  AIProviderFactory.php
+  AIGenerationService.php
+  AIGenerationLogService.php
+  PromptResolverService.php
+  AITestService.php
+
+app/Services/Admin/
+  AiSettingService.php
+  PromptService.php
+  AiQueueService.php
+
+app/Jobs/
+  AIQueueJob.php
+  AIGenerationJob.php
+
+app/Http/Controllers/Admin/
+  AiSettingController.php
+  PromptController.php
+  AiQueueController.php
+  AiGenerationController.php
+
+app/Http/Requests/Admin/
+  AiSetting/UpdateRequest.php
+  Prompt/IndexRequest.php
+  Prompt/StoreRequest.php
+  Prompt/UpdateRequest.php
+  Prompt/BulkDestroyRequest.php
+  AiQueue/IndexRequest.php
+  AiGeneration/IndexRequest.php
+
+app/Queries/Admin/
+  PromptQuery.php
+  AiQueueQuery.php
+  AiGenerationQuery.php
+
+resources/views/admin/
+  ai-settings/edit.blade.php
+  prompts/index.blade.php
+  prompts/create.blade.php
+  prompts/edit.blade.php
+  prompts/_form.blade.php
+  ai-queue/index.blade.php
+  ai-queue/show.blade.php
+  ai-generations/index.blade.php
+  ai-generations/show.blade.php
+```
+
+### Güncellenen Dosyalar
+
+```
+app/Models/PoolBatch.php              (aiQueue ilişkisi eklendi)
+routes/admin.php                      (AI route'ları eklendi)
+routes/console.php                    (AIQueueJob scheduler eklendi)
+resources/views/admin/layouts/partials/sidebar.blade.php (AI menüsü eklendi)
+config/news_collection.php            (gpt4free konfigürasyonu eklendi)
+```

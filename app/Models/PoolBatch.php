@@ -41,4 +41,9 @@ class PoolBatch extends Model
     {
         return $this->hasMany(PoolBatchItem::class)->orderByDesc('final_score');
     }
+
+    public function aiQueue(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Models\AiQueue::class);
+    }
 }

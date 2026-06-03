@@ -3,9 +3,13 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Admin\AiGenerationController;
+use App\Http\Controllers\Admin\AiQueueController;
+use App\Http\Controllers\Admin\AiSettingController;
 use App\Http\Controllers\Admin\PoolHistoryController;
 use App\Http\Controllers\Admin\PoolSelectionController;
 use App\Http\Controllers\Admin\PoolSettingController;
+use App\Http\Controllers\Admin\PromptController;
 use App\Http\Controllers\Admin\RawTweetController;
 use App\Http\Controllers\Admin\ScanHistoryController;
 use App\Http\Controllers\Admin\SourceAccountController;
@@ -57,6 +61,26 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::get('pool-history', [PoolHistoryController::class, 'index'])->name('pool-history.index');
     Route::get('pool-history/{poolBatch}', [PoolHistoryController::class, 'show'])->name('pool-history.show');
+
+    // AI Yonetimi
+    Route::get('ai-settings', [AiSettingController::class, 'edit'])->name('ai-settings.edit');
+    Route::put('ai-settings', [AiSettingController::class, 'update'])->name('ai-settings.update');
+    Route::post('ai-settings/test', [AiSettingController::class, 'test'])->name('ai-settings.test');
+
+    Route::resource('prompts', PromptController::class)->except('show');
+    Route::delete('prompts/bulk-destroy', [PromptController::class, 'bulkDestroy'])
+        ->name('prompts.bulk-destroy');
+    Route::post('prompts/{prompt}/activate', [PromptController::class, 'activate'])->name('prompts.activate');
+    Route::post('prompts/{prompt}/deactivate', [PromptController::class, 'deactivate'])->name('prompts.deactivate');
+
+    Route::get('ai-queue', [AiQueueController::class, 'index'])->name('ai-queue.index');
+    Route::get('ai-queue/{aiQueue}', [AiQueueController::class, 'show'])->name('ai-queue.show');
+
+    Route::get('ai-generations', [AiGenerationController::class, 'index'])->name('ai-generations.index');
+    Route::get('ai-generations/{aiGeneration}', [AiGenerationController::class, 'show'])->name('ai-generations.show');
+    Route::post('ai-generations/{aiGeneration}/approve', [AiGenerationController::class, 'approve'])->name('ai-generations.approve');
+    Route::post('ai-generations/{aiGeneration}/reject', [AiGenerationController::class, 'reject'])->name('ai-generations.reject');
+    Route::post('ai-generations/{aiGeneration}/publish', [AiGenerationController::class, 'publish'])->name('ai-generations.publish');
 
     // Twscrape Yönetimi
     Route::prefix('twscrape')->name('twscrape.')->group(function () {

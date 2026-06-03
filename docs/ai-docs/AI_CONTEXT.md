@@ -558,3 +558,136 @@ Yeni geliştirmeye başlamadan önce:
 6. Sonra implementasyona geç.
 
 Bu kurallar zorunludur.
+
+---
+
+# AI Workflow Modülü
+
+Havuz seçiminden sonra seçilen tweetlerin AI ile haberleştirilmesini sağlayan sistemdir.
+
+## Akış
+
+Pool Selection
+→ AI Queue
+→ AI Generation
+→ Review
+→ Publish Queue
+→ Published
+
+Her adımda detaylı loglama yapılır.
+
+## Providerlar
+
+Sistem iki provider destekler:
+
+- GPT4Free (ücretsiz, Python servisi, model havuzundan otomatik seçim)
+- OpenCode (HTTP API, OpenAI-compatible endpoint)
+
+Admin panelden aktif provider değiştirilebilir.
+
+## Prompt Sistemi
+
+Promptlar source_categories ile entegredir.
+
+Her kategorinin kendi aktif promptu olabilir.
+
+Tweet hangi kategoriden geldiyse o kategorinin aktif promptu kullanılır.
+
+Kategoriye özel prompt yoksa global aktif prompt kullanılır.
+
+## Değişkenler
+
+Zorunlu: {tweet_content}
+
+Opsiyonel: {tweet_count}, {sources}, {total_score}, {first_tweet}
+
+Geçersiz placeholder varsa kayıt sırasında uyarı verilir.
+
+## Tablolar
+
+- ai_settings (singleton, provider ayarları)
+- prompts (şablonlar, SoftDeletes, source_category_id FK)
+- ai_queues (havuz batch → AI kuyruk)
+- ai_generations (AI çıktıları)
+- ai_generation_items (üretim-tweet ilişkisi)
+- ai_generation_logs (işlem logları)
+
+## Model Katmanı
+
+- AiSetting (singleton, provider, opencode_api_key, opencode_base_url, opencode_model)
+- Prompt (name, source_category_id, prompt_text, version, is_active)
+- AiQueue (pool_batch_id, batch_no, status)
+- AiGeneration (ai_queue_id, model, prompt, full_prompt, ai_response, generated_news, token_usage, status)
+- AiGenerationItem (ai_generation_id, raw_tweet_id)
+- AiGenerationLog (ai_queue_id, ai_generation_id, level, message)
+
+## Service Katmanı
+
+Admin:
+- AiSettingService (ayar güncelleme)
+- PromptService (CRUD, kategori bazlı activate/deactivate)
+- AiQueueService (kuyruk oluşturma, durum yönetimi)
+
+NewsCollection:
+- AIGenerationService (ana üretim orchestrator)
+- AIGenerationLogService (log yardımcısı)
+- PromptResolverService (değişken çözümleme, placeholder validasyon)
+- AIProviderFactory (provider seçimi)
+- Gpt4freeProvider + Gpt4freeClient (Python g4f entegrasyonu)
+- OpenCodeProvider (HTTP API)
+- AITestService (provider bağlantı testi)
+
+## Job Katmanı
+
+- AIQueueJob: Completed PoolBatch'leri AI kuyruğuna alır
+- AIGenerationJob: AI provider ile içerik üretir
+
+## Controller Katmanı
+
+- AiSettingController (edit, update, test)
+- PromptController (CRUD + activate/deactivate)
+- AiQueueController (index, show)
+- AiGenerationController (index, show, approve, reject, publish)
+
+## Admin Sayfaları
+
+/admin/ai-settings → AI provider ayarları ve bağlantı testi
+/admin/prompts → Prompt şablon yönetimi
+/admin/ai-queue → AI kuyruk listesi
+/admin/ai-generations → AI üretimleri ve review
+
+## Review Durumları
+
+draft → approved → published
+draft → rejected
+approved → rejected
+
+## Scheduler
+
+routes/console.php:
+
+Schedule::job(new AIQueueJob)->everyMinute()->withoutOverlapping();
+
+## GPT4Free Python Entegrasyonu
+
+Script: services/gpt4free/ai_generate.py
+
+Referans: test3.py + havuz dosyası
+
+Model listesini havuz dosyasından okur.
+
+Hata durumunda diğer modellere geçer.
+
+Çıktı JSON formatında stdout'a yazılır.
+
+Laravel tarafı: Gpt4freeClient (Symfony Process ile çalıştırır, stdout/stderr okur, JSON parse, timeout, Windows env fix).
+
+## OpenCode Entegrasyonu
+
+OpenAI-compatible HTTP API.
+
+Base URL: https://opencode.ai/zen/go/v1
+
+Laravel tarafı: OpenCodeProvider (GuzzleHttp ile POST, Bearer auth).
+
+Admin panelden API key, base URL ve model değiştirilebilir.
