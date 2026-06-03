@@ -73,12 +73,33 @@
         @endif
     </x-admin.card>
 
-    @if ($queue->generation)
-        <x-admin.card eyebrow="Uretim" title="Iliskili AI Uretimi" style="margin-top: 24px;">
-            <a href="{{ route('admin.ai-generations.show', $queue->generation) }}" class="btn btn--ghost">
-                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                Uretim Detayina Git
-            </a>
+    @if ($queue->generations->isNotEmpty())
+        <x-admin.card eyebrow="Uretimler" title="AI Uretimleri ({{ $queue->generations->count() }})" style="margin-top: 24px;">
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                @foreach ($queue->generations as $gen)
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-3); border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span class="data-cell-mono" style="font-size: 12px; color: var(--t-muted);">#{{ $gen->id }}</span>
+                            @if ($gen->rawTweet)
+                                <span style="font-weight: 600; font-size: 13px;">{{ $gen->rawTweet->sourceAccount?->username ?? 'bilinmiyor' }}</span>
+                                <span style="font-size: 13px; color: var(--t-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ $gen->rawTweet->tweet_text }}</span>
+                            @else
+                                <span style="color: var(--t-muted);">Tweet bilgisi yok</span>
+                            @endif
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            @php
+                                $genStatusTag = match($gen->status) {'draft' => 't-unavail', 'approved' => 't-info', 'rejected' => 't-danger', 'published' => 't-active', default => 't-unavail'};
+                            @endphp
+                            <span class="tag {{ $genStatusTag }}">{{ $gen->status }}</span>
+                            <a href="{{ route('admin.ai-generations.show', $gen) }}" class="btn btn--ghost" style="padding: 4px 10px; font-size: 12px;">
+                                <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                Detay
+                            </a>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
         </x-admin.card>
     @endif
 

@@ -36,14 +36,18 @@ class AiGenerationQuery
 
     public function paginate(array $filters): LengthAwarePaginator
     {
-        $query = AiGeneration::query()->with('aiQueue');
+        $query = AiGeneration::query()
+            ->with(['aiQueue', 'rawTweet.sourceAccount.category']);
 
         if ($filters['q'] !== '') {
             $search = $filters['q'];
             $query->where(function ($builder) use ($search) {
                 $builder->where('title', 'like', "%{$search}%")
                     ->orWhere('model', 'like', "%{$search}%")
-                    ->orWhere('generated_news', 'like', "%{$search}%");
+                    ->orWhere('generated_news', 'like', "%{$search}%")
+                    ->orWhereHas('rawTweet', function ($q) use ($search) {
+                        $q->where('tweet_text', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -92,7 +96,6 @@ class AiGenerationQuery
     {
         $columns = [
             ['label' => 'Tarih', 'key' => 'created_at'],
-            ['label' => 'Baslik', 'key' => 'title'],
             ['label' => 'Model', 'key' => 'model'],
             ['label' => 'Versiyon', 'key' => 'prompt_version'],
             ['label' => 'Sure', 'key' => 'duration'],

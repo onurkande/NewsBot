@@ -19,7 +19,7 @@ class AiGenerationController extends Controller
 
     public function show(AiGeneration $aiGeneration): View
     {
-        $aiGeneration->load(['aiQueue', 'prompt', 'items.rawTweet.sourceAccount', 'logs']);
+        $aiGeneration->load(['aiQueue', 'prompt', 'rawTweet.sourceAccount.category', 'category', 'logs']);
 
         return view('admin.ai-generations.show', [
             'generation' => $aiGeneration,

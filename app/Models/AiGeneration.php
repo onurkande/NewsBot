@@ -13,6 +13,10 @@ class AiGeneration extends Model
 
     protected $fillable = [
         'ai_queue_id',
+        'raw_tweet_id',
+        'source_account_id',
+        'category_id',
+        'provider',
         'prompt_id',
         'model',
         'prompt_version',
@@ -27,6 +31,7 @@ class AiGeneration extends Model
         'status',
         'error',
         'generated_at',
+        'approved_at',
     ];
 
     protected function casts(): array
@@ -37,6 +42,7 @@ class AiGeneration extends Model
             'prompt_version' => 'integer',
             'duration' => 'integer',
             'generated_at' => 'datetime',
+            'approved_at' => 'datetime',
         ];
     }
 
@@ -50,9 +56,19 @@ class AiGeneration extends Model
         return $this->belongsTo(Prompt::class);
     }
 
-    public function items(): HasMany
+    public function rawTweet(): BelongsTo
     {
-        return $this->hasMany(AiGenerationItem::class);
+        return $this->belongsTo(RawTweet::class);
+    }
+
+    public function sourceAccount(): BelongsTo
+    {
+        return $this->belongsTo(SourceAccount::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(SourceCategory::class);
     }
 
     public function logs(): HasMany

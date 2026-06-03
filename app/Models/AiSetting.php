@@ -21,6 +21,7 @@ class AiSetting extends Model
         'opencode_base_url',
         'opencode_model',
         'is_active',
+        'auto_approve',
     ];
 
     protected function casts(): array
@@ -30,6 +31,7 @@ class AiSetting extends Model
             'timeout' => 'integer',
             'concurrent_jobs' => 'integer',
             'is_active' => 'boolean',
+            'auto_approve' => 'boolean',
         ];
     }
 
@@ -46,6 +48,7 @@ class AiSetting extends Model
                 'opencode_base_url' => 'https://opencode.ai/zen/go/v1',
                 'opencode_model' => 'deepseek-v4-flash',
                 'is_active' => true,
+                'auto_approve' => false,
             ]);
         }
 

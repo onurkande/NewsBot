@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class RawTweet extends Model
@@ -63,5 +64,25 @@ class RawTweet extends Model
     public function storyClusterItem(): HasOne
     {
         return $this->hasOne(StoryClusterItem::class);
+    }
+
+    public function poolBatchItems(): HasMany
+    {
+        return $this->hasMany(PoolBatchItem::class);
+    }
+
+    public function aiGenerations(): HasMany
+    {
+        return $this->hasMany(AiGeneration::class);
+    }
+
+    public function duplicateChecks(): HasMany
+    {
+        return $this->hasMany(DuplicateCheck::class);
+    }
+
+    public function matchedDuplicates(): HasMany
+    {
+        return $this->hasMany(DuplicateCheck::class, 'matched_tweet_id');
     }
 }

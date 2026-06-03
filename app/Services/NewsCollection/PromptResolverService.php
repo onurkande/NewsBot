@@ -33,6 +33,13 @@ class PromptResolverService
         return $this->replaceVariables($promptText, $variables);
     }
 
+    public function resolveForTweet(string $promptText, \App\Models\RawTweet $tweet): string
+    {
+        $variables = $this->extractVariablesForTweet($tweet);
+
+        return $this->replaceVariables($promptText, $variables);
+    }
+
     public function buildFullPrompt(string $resolvedPrompt, \Illuminate\Support\Collection $tweets): string
     {
         $tweetTexts = $tweets->map(function (array $tweet, int $index) {
@@ -71,6 +78,20 @@ class PromptResolverService
             '{sources}' => $usernames,
             '{total_score}' => (string) $totalScore,
             '{first_tweet}' => $firstTweet,
+        ];
+    }
+
+    private function extractVariablesForTweet(\App\Models\RawTweet $tweet): array
+    {
+        $username = $tweet->sourceAccount?->username ?? 'bilinmiyor';
+        $finalScore = $tweet->poolBatchItems->first()?->final_score ?? 0;
+
+        return [
+            '{tweet_content}' => $tweet->tweet_text,
+            '{tweet_count}' => '1',
+            '{sources}' => $username,
+            '{total_score}' => (string) $finalScore,
+            '{first_tweet}' => $tweet->tweet_text,
         ];
     }
 

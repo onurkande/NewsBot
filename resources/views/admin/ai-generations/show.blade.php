@@ -7,8 +7,8 @@
 @section('content')
     <x-admin.page-header
         eyebrow="Uretim Detay"
-        title="{{ $generation->title ?: 'Uretim #' . $generation->id }}"
-        subtitle="{{ $generation->generated_at?->format('Y-m-d H:i') }} | {{ $generation->model }} | v{{ $generation->prompt_version }}"
+        title="Uretim #{{ $generation->id }}"
+        subtitle="{{ $generation->generated_at?->format('Y-m-d H:i') }} | {{ $generation->provider }} | {{ $generation->model }} | v{{ $generation->prompt_version }}"
     >
         <x-slot:actions>
             <x-admin.button variant="ghost" :href="route('admin.ai-generations.index')">
@@ -20,8 +20,53 @@
 
     <x-admin.flash-message />
 
-    <x-admin.card eyebrow="Meta" title="Uretim Bilgileri">
+    @if ($generation->rawTweet)
+        <x-admin.card eyebrow="Tweet" title="Kaynak Tweet">
+            <div style="padding: 16px; background: var(--bg-3); border-radius: 6px; border-left: 3px solid var(--primary);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <span style="font-weight: 600; font-size: 14px;">{{ $generation->rawTweet->sourceAccount?->username ?? 'bilinmiyor' }}</span>
+                        @if ($generation->rawTweet->sourceAccount?->display_name)
+                            <span style="color: var(--t-muted); font-size: 13px; margin-left: 4px;">({{ $generation->rawTweet->sourceAccount->display_name }})</span>
+                        @endif
+                    </div>
+                    <span class="data-cell-mono" style="font-size: 11px; color: var(--t-muted);">{{ $generation->rawTweet->tweet_id }}</span>
+                </div>
+                <div style="font-size: 14px; line-height: 1.6; margin-bottom: 12px;">{{ $generation->rawTweet->tweet_text }}</div>
+                <div style="display: flex; gap: 16px; font-size: 12px; color: var(--t-muted);">
+                    <span>{{ $generation->rawTweet->tweeted_at?->format('Y-m-d H:i') ?? '—' }}</span>
+                    <span>Like: {{ $generation->rawTweet->like_count }}</span>
+                    <span>RT: {{ $generation->rawTweet->retweet_count }}</span>
+                    <span>Reply: {{ $generation->rawTweet->reply_count }}</span>
+                    <span>View: {{ $generation->rawTweet->view_count }}</span>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                <div>
+                    <div style="color: var(--t-muted); font-size: 12px;">Kategori</div>
+                    @if ($generation->category)
+                        <span class="badge primary">{{ $generation->category->name }}</span>
+                    @elseif ($generation->rawTweet?->sourceAccount?->category)
+                        <span class="badge primary">{{ $generation->rawTweet->sourceAccount->category->name }}</span>
+                    @else
+                        <span style="color: var(--t-muted);">—</span>
+                    @endif
+                </div>
+                <div>
+                    <div style="color: var(--t-muted); font-size: 12px;">Kaynak Hesap</div>
+                    <div style="font-weight: 600;">{{ $generation->rawTweet->sourceAccount?->username ?? '—' }}</div>
+                </div>
+            </div>
+        </x-admin.card>
+    @endif
+
+    <x-admin.card eyebrow="Meta" title="Uretim Bilgileri" style="margin-top: 24px;">
         <div class="body-text" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; line-height: 1.8;">
+            <div>
+                <div style="color: var(--t-muted); font-size: 12px;">Provider</div>
+                <div style="font-weight: 600;">{{ $generation->provider }}</div>
+            </div>
             <div>
                 <div style="color: var(--t-muted); font-size: 12px;">Model</div>
                 <div style="font-weight: 600;">{{ $generation->model }}</div>
@@ -38,8 +83,13 @@
                 <div style="color: var(--t-muted); font-size: 12px;">Durum</div>
                 @php
                     $statusTag = match($generation->status) {'draft' => 't-unavail', 'approved' => 't-info', 'rejected' => 't-danger', 'published' => 't-active', default => 't-unavail'};
+                    $statusLabel = match($generation->status) {'draft' => 'Taslak', 'approved' => 'Onaylandi', 'rejected' => 'Reddedildi', 'published' => 'Yayinlandi', default => $generation->status};
                 @endphp
-                <span class="tag {{ $statusTag }}">{{ $generation->status }}</span>
+                <span class="tag {{ $statusTag }}">{{ $statusLabel }}</span>
+            </div>
+            <div>
+                <div style="color: var(--t-muted); font-size: 12px;">Onay Tarihi</div>
+                <div style="font-weight: 600;">{{ $generation->approved_at?->format('Y-m-d H:i:s') ?? '—' }}</div>
             </div>
             <div>
                 <div style="color: var(--t-muted); font-size: 12px;">Uretim Tarihi</div>
@@ -97,22 +147,6 @@
         </x-admin.card>
     @endif
 
-    @if ($generation->items->isNotEmpty())
-        <x-admin.card eyebrow="Tweetler" title="Secili Tweetler ({{ $generation->items->count() }})" style="margin-top: 24px;">
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                @foreach ($generation->items as $item)
-                    <div style="padding: 12px; background: var(--bg-3); border-radius: 6px; border-left: 3px solid var(--primary);">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                            <span style="font-weight: 600;">@{{ $item->rawTweet->sourceAccount?->username ?? 'bilinmiyor' }}</span>
-                            <span class="data-cell-mono" style="font-size: 11px; color: var(--t-muted);">{{ $item->rawTweet->tweet_id }}</span>
-                        </div>
-                        <div style="font-size: 13px; line-height: 1.5;">{{ $item->rawTweet->tweet_text }}</div>
-                    </div>
-                @endforeach
-            </div>
-        </x-admin.card>
-    @endif
-
     @if ($generation->prompt)
         <x-admin.card eyebrow="Prompt" title="Kullanilan Prompt" style="margin-top: 24px;">
             <pre style="white-space: pre-wrap; font-size: 12px; line-height: 1.6; background: var(--bg-3); padding: 16px; border-radius: 6px; overflow-x: auto; max-height: 400px; overflow-y: auto;">{{ $generation->prompt }}</pre>
@@ -120,13 +154,13 @@
     @endif
 
     @if ($generation->full_prompt)
-        <x-admin.card eyebrow="Full Prompt" title="Tam Prompt (AI'ye Gonderilen)" style="margin-top: 24px;">
+        <x-admin.card eyebrow="Full Prompt" title="Render Edilmis Prompt (AI'ye Gonderilen)" style="margin-top: 24px;">
             <pre style="white-space: pre-wrap; font-size: 12px; line-height: 1.6; background: var(--bg-3); padding: 16px; border-radius: 6px; overflow-x: auto; max-height: 500px; overflow-y: auto;">{{ $generation->full_prompt }}</pre>
         </x-admin.card>
     @endif
 
     @if ($generation->generated_news)
-        <x-admin.card eyebrow="Sonuc" title="Uretilen Haber" style="margin-top: 24px;">
+        <x-admin.card eyebrow="Sonuc" title="AI Ciktisi" style="margin-top: 24px;">
             <div style="white-space: pre-wrap; font-size: 14px; line-height: 1.8; background: var(--bg-3); padding: 20px; border-radius: 6px;">
                 {{ $generation->generated_news }}
             </div>

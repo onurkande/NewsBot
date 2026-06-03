@@ -83,6 +83,7 @@
                             <th style="width: 100px;">Final</th>
                             <th style="width: 80px;">Sira</th>
                             <th style="width: 100px;">Durum</th>
+                            <th style="text-align: right">Islemler</th>
                         </tr>
                     </thead>
 
@@ -113,13 +114,20 @@
                                     <td><span class="badge success">{{ number_format($item->final_score, 2) }}</span></td>
                                     <td><span class="data-cell-mono">{{ $item->rank }}</span></td>
                                     <td><span class="tag t-active">Secildi</span></td>
+                                    <td>
+                                        <div class="data-cell-actions" style="justify-content: flex-end">
+                                            <a class="btn--icon" href="{{ route('admin.raw-tweets.show', $item->rawTweet) }}" aria-label="Detay">
+                                                <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                                            </a>
+                                        </div>
+                                    </td>
                                 </tr>
                             @endforeach
                         @endif
 
                         @if ($hasSelected && $hasNotSelected)
                             <tr>
-                                <td colspan="8" style="padding: 0;">
+                                <td colspan="9" style="padding: 0;">
                                     <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--bg-3); border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border);">
                                         <div style="flex: 1; height: 1px; background: var(--border);"></div>
                                         <span style="font-size: 12px; font-weight: 600; color: var(--t-muted); text-transform: uppercase; letter-spacing: 0.5px;">Baraj Cizgisi &mdash; Yukarisi Secilenler</span>
@@ -150,13 +158,20 @@
                                     <td><span class="badge primary">{{ number_format($item->final_score, 2) }}</span></td>
                                     <td><span class="data-cell-mono">{{ $item->rank }}</span></td>
                                     <td><span class="tag t-unavail">Secilmedi</span></td>
+                                    <td>
+                                        <div class="data-cell-actions" style="justify-content: flex-end">
+                                            <a class="btn--icon" href="{{ route('admin.raw-tweets.show', $item->rawTweet) }}" aria-label="Detay">
+                                                <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                                            </a>
+                                        </div>
+                                    </td>
                                 </tr>
                             @endforeach
                         @endif
 
                         @if (! $hasSelected && ! $hasNotSelected)
                             <tr>
-                                <td colspan="8">
+                                <td colspan="9">
                                     <x-admin.empty-state
                                         title="Bu batch icin kayit bulunamadi"
                                         description="Filtreleri temizleyerek tum sonuclari gorebilirsiniz."

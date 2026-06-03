@@ -27,7 +27,7 @@
                     <span class="ico">
                         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                     </span>
-                    <input class="input" type="search" name="q" value="{{ $search }}" placeholder="Baslik, model veya icerik ara...">
+                    <input class="input" type="search" name="q" value="{{ $search }}" placeholder="Tweet, model veya icerik ara...">
                 </div>
 
                 <button class="btn btn--ghost" type="submit">
@@ -53,14 +53,15 @@
         </form>
 
         <div style="overflow-x: auto; margin: 0 -22px;">
-            <table class="data-table" style="margin: 0 22px; min-width: 900px;">
+            <table class="data-table" style="margin: 0 22px; min-width: 1100px;">
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th class="{{ $sortColumns[0]['class'] }}">
-                            <a href="{{ $sortColumns[0]['url'] }}">{{ $sortColumns[0]['label'] }}<span class="sort"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></a>
-                        </th>
-                        @foreach (array_slice($sortColumns, 1) as $column)
+                        <th>Tweet</th>
+                        <th>Kaynak</th>
+                        <th>Kategori</th>
+                        <th>Provider</th>
+                        @foreach ($sortColumns as $column)
                             <th class="{{ $column['class'] }}">
                                 <a href="{{ $column['url'] }}">{{ $column['label'] }}<span class="sort"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></a>
                             </th>
@@ -74,17 +75,52 @@
                     @forelse ($generations as $generation)
                         <tr class="data-row">
                             <td class="data-cell-mono">{{ $generation->id }}</td>
-                            <td>{{ $generation->created_at->format('Y-m-d H:i') }}</td>
-                            <td>{{ $generation->title ?: 'Basliksiz' }}</td>
-                            <td><span class="badge primary">{{ $generation->model }}</span></td>
-                            <td>v{{ $generation->prompt_version }}</td>
                             <td>
-                                @if ($generation->duration)
-                                    <span class="data-cell-mono">{{ $generation->duration }} ms</span>
+                                @if ($generation->rawTweet)
+                                    <div style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;">
+                                        {{ $generation->rawTweet->tweet_text }}
+                                    </div>
+                                    <div class="data-cell-mono" style="font-size: 11px; color: var(--t-muted); margin-top: 2px;">
+                                        {{ $generation->rawTweet->tweet_id }}
+                                    </div>
                                 @else
                                     <span style="color: var(--t-muted);">—</span>
                                 @endif
                             </td>
+                            <td>
+                                @if ($generation->rawTweet?->sourceAccount)
+                                    <span style="font-weight: 600;">{{ $generation->rawTweet->sourceAccount->username }}</span>
+                                @else
+                                    <span style="color: var(--t-muted);">—</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if ($generation->category)
+                                    <span class="badge primary">{{ $generation->category->name }}</span>
+                                @elseif ($generation->rawTweet?->sourceAccount?->category)
+                                    <span class="badge primary">{{ $generation->rawTweet->sourceAccount->category->name }}</span>
+                                @else
+                                    <span style="color: var(--t-muted);">—</span>
+                                @endif
+                            </td>
+                            <td><span class="badge">{{ $generation->provider }}</span></td>
+                            @foreach ($sortColumns as $column)
+                                <td>
+                                    @if ($column['key'] === 'model')
+                                        <span class="badge primary">{{ $generation->model }}</span>
+                                    @elseif ($column['key'] === 'created_at')
+                                        {{ $generation->created_at->format('Y-m-d H:i') }}
+                                    @elseif ($column['key'] === 'prompt_version')
+                                        v{{ $generation->prompt_version }}
+                                    @elseif ($column['key'] === 'duration')
+                                        @if ($generation->duration)
+                                            <span class="data-cell-mono">{{ $generation->duration }} ms</span>
+                                        @else
+                                            <span style="color: var(--t-muted);">—</span>
+                                        @endif
+                                    @endif
+                                </td>
+                            @endforeach
                             <td>
                                 @php
                                     $statusTag = match($generation->status) {
@@ -114,7 +150,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9">
+                            <td colspan="11">
                                 <x-admin.empty-state title="Henuz uretim yok" description="AI kuyrugu islenmeye basladiginda uretimler burada goruntecektir." />
                             </td>
                         </tr>
