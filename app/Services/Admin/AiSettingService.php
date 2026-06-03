@@ -31,6 +31,7 @@ class AiSettingService
             'concurrent_jobs' => max(1, min(10, $concurrentJobs)),
             'active_prompt_id' => Arr::get($data, 'active_prompt_id'),
             'is_active' => (bool) Arr::get($data, 'is_active', false),
+            'auto_approve' => (bool) Arr::get($data, 'auto_approve', false),
         ];
 
         if (($data['provider'] ?? '') === 'opencode') {

@@ -18,7 +18,10 @@ class AIReviewService
         }
 
         return DB::transaction(function () use ($generation) {
-            $generation->update(['status' => 'approved']);
+            $generation->update([
+                'status' => 'approved',
+                'approved_at' => now(),
+            ]);
 
             $this->logService->logInfo($generation, 'Uretim onaylandi.', [
                 'generation_id' => $generation->id,
@@ -35,7 +38,10 @@ class AIReviewService
         }
 
         return DB::transaction(function () use ($generation) {
-            $generation->update(['status' => 'rejected']);
+            $generation->update([
+                'status' => 'rejected',
+                'approved_at' => null,
+            ]);
 
             $this->logService->logInfo($generation, 'Uretim reddedildi.', [
                 'generation_id' => $generation->id,

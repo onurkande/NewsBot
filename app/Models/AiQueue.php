@@ -38,9 +38,9 @@ class AiQueue extends Model
         return $this->belongsTo(PoolBatch::class);
     }
 
-    public function generation(): HasOne
+    public function generations(): HasMany
     {
-        return $this->hasOne(AiGeneration::class);
+        return $this->hasMany(AiGeneration::class);
     }
 
     public function logs(): HasMany

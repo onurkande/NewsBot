@@ -49,6 +49,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('source-accounts/{source_account}/fetch', [SourceAccountController::class, 'fetch'])->name('source-accounts.fetch');
 
     Route::get('raw-tweets', [RawTweetController::class, 'index'])->name('raw-tweets.index');
+    Route::get('raw-tweets/{rawTweet}', [RawTweetController::class, 'show'])->name('raw-tweets.show');
     Route::get('story-clusters', [StoryClusterController::class, 'index'])->name('story-clusters.index');
     Route::get('story-clusters/{storyCluster}', [StoryClusterController::class, 'show'])->name('story-clusters.show');
     Route::get('scan-histories', [ScanHistoryController::class, 'index'])->name('scan-histories.index');

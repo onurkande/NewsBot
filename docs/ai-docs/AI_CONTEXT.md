@@ -569,12 +569,15 @@ Havuz seçiminden sonra seçilen tweetlerin AI ile haberleştirilmesini sağlaya
 
 Pool Selection
 → AI Queue
-→ AI Generation
+→ Her tweet için ayrı AI üretimi
+→ AI Generation (1 üretim = 1 tweet)
 → Review
 → Publish Queue
 → Published
 
 Her adımda detaylı loglama yapılır.
+
+Üretim tweet bazlıdır: Her tweet kendi AI üretim kaydını oluşturur.
 
 ## Providerlar
 
@@ -595,31 +598,43 @@ Tweet hangi kategoriden geldiyse o kategorinin aktif promptu kullanılır.
 
 Kategoriye özel prompt yoksa global aktif prompt kullanılır.
 
+Üretim tweet bazlıdır: Her tweet için ayrı prompt seçilir ve ayrı AI çağrısı yapılır.
+
 ## Değişkenler
 
-Zorunlu: {tweet_content}
+Zorunlu: {tweet_content} (tek tweet metni)
 
-Opsiyonel: {tweet_count}, {sources}, {total_score}, {first_tweet}
+Opsiyonel: {tweet_count} (1), {sources}, {total_score}, {first_tweet}
 
 Geçersiz placeholder varsa kayıt sırasında uyarı verilir.
+
+PromptResolverService::resolveForTweet() metodu tek tweet için placeholder doldurma yapar.
 
 ## Tablolar
 
 - ai_settings (singleton, provider ayarları)
 - prompts (şablonlar, SoftDeletes, source_category_id FK)
 - ai_queues (havuz batch → AI kuyruk)
-- ai_generations (AI çıktıları)
-- ai_generation_items (üretim-tweet ilişkisi)
+- ai_generations (AI çıktıları, tweet bazlı: her kayıt 1 tweet'e karşılık gelir)
 - ai_generation_logs (işlem logları)
+
+Not: ai_generation_items tablosu kaldırılmıştır. Tweet ilişkisi doğrudan ai_generations.raw_tweet_id üzerindendir.
 
 ## Model Katmanı
 
 - AiSetting (singleton, provider, opencode_api_key, opencode_base_url, opencode_model)
 - Prompt (name, source_category_id, prompt_text, version, is_active)
 - AiQueue (pool_batch_id, batch_no, status)
-- AiGeneration (ai_queue_id, model, prompt, full_prompt, ai_response, generated_news, token_usage, status)
-- AiGenerationItem (ai_generation_id, raw_tweet_id)
+- AiGeneration (ai_queue_id, raw_tweet_id, source_account_id, category_id, provider, model, prompt, full_prompt, ai_response, generated_news, token_usage, status)
 - AiGenerationLog (ai_queue_id, ai_generation_id, level, message)
+
+AiGeneration ilişkileri:
+- belongsTo RawTweet
+- belongsTo SourceAccount
+- belongsTo SourceCategory
+- belongsTo AiQueue
+- belongsTo Prompt
+- hasMany AiGenerationLog
 
 ## Service Katmanı
 
@@ -629,9 +644,9 @@ Admin:
 - AiQueueService (kuyruk oluşturma, durum yönetimi)
 
 NewsCollection:
-- AIGenerationService (ana üretim orchestrator)
+- AIGenerationService (ana üretim orchestrator, tweet bazlı: processQueue, generateForTweet)
 - AIGenerationLogService (log yardımcısı)
-- PromptResolverService (değişken çözümleme, placeholder validasyon)
+- PromptResolverService (değişken çözümleme, placeholder validasyon, resolveForTweet metodu)
 - AIProviderFactory (provider seçimi)
 - Gpt4freeProvider + Gpt4freeClient (Python g4f entegrasyonu)
 - OpenCodeProvider (HTTP API)
@@ -640,7 +655,7 @@ NewsCollection:
 ## Job Katmanı
 
 - AIQueueJob: Completed PoolBatch'leri AI kuyruğuna alır
-- AIGenerationJob: AI provider ile içerik üretir
+- AIGenerationJob: AI provider ile tweet bazlı içerik üretir (her tweet için ayrı üretim)
 
 ## Controller Katmanı
 

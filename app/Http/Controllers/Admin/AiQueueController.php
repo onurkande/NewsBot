@@ -17,7 +17,7 @@ class AiQueueController extends Controller
 
     public function show(AiQueue $aiQueue): View
     {
-        $aiQueue->load(['poolBatch', 'generation.items.rawTweet.sourceAccount', 'logs']);
+        $aiQueue->load(['poolBatch', 'generations.rawTweet.sourceAccount', 'logs']);
 
         return view('admin.ai-queue.show', [
             'queue' => $aiQueue,

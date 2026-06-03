@@ -1183,9 +1183,12 @@ AI Queue Job (completed batch'leri kuyruğa alır)
     ↓
 AI Queue (pending → processing)
     ↓
-AI Generation Job (AI provider ile içerik üretir)
-    ↓
-AI Generation (draft durumunda oluşur)
+AI Generation Job (batch içindeki tweetleri tek tek işler)
+    ↓ Her tweet için ayrı:
+    ↓   1. Kategoriye göre aktif prompt seçilir
+    ↓   2. Placeholder ({tweet_content}) doldurulur
+    ↓   3. AI provider çalıştırılır
+    ↓   4. AiGeneration kaydı oluşturulur (1 üretim = 1 tweet)
     ↓
 Review (admin onaylar / reddeder)
     ↓
@@ -1193,6 +1196,8 @@ Published (onaylanan içerik yayına hazır)
 ```
 
 Her adımda `ai_generation_logs` tablosuna detaylı log kaydı yapılır.
+
+**Önemli:** Üretim tweet bazlıdır. Bir batch'teki her tweet için ayrı bir `ai_generations` kaydı oluşur. Bir üretim kaydına birden fazla tweet bağlanmaz.
 
 ---
 
@@ -1255,6 +1260,12 @@ Promptlar `source_categories` tablosuna bağlıdır. Her kategorinin kendi aktif
 3. Kategoriye özel prompt yoksa global aktif prompt (kategori boş olan) kullanılır.
 4. O da yoksa sistem varsayılan prompt'u kullanır.
 
+**Üretim akışı (tweet bazlı):**
+1. Her tweet için kendi kategorisine göre prompt seçilir.
+2. Prompt `{tweet_content}` placeholder'ı tweet metni ile değiştirilir.
+3. AI provider'a istek gönderilir.
+4. Sonuç ilgili tweet için ayrı bir `ai_generations` kaydı olarak saklanır.
+
 ### 3.2 Değişkenler (Placeholder)
 
 Prompt metinleri değişken destekler. AI isteği gönderilmeden önce sistem bu değişkenleri gerçek verilerle değiştirir.
@@ -1263,16 +1274,16 @@ Prompt metinleri değişken destekler. AI isteği gönderilmeden önce sistem bu
 
 | Değişken | Açıklama |
 |----------|----------|
-| `{tweet_content}` | Seçilen tüm tweet metinleri, numaralandırılmış ve kaynak kullanıcı adlarıyla birlikte |
+| `{tweet_content}` | Tek tweet metni (tweet bazlı üretimde tek bir tweet'in içeriği) |
 
 **Opsiyonel değişkenler:**
 
 | Değişken | Açıklama |
 |----------|----------|
-| `{tweet_count}` | Seçilen tweet sayısı |
-| `{sources}` | Kaynak hesap kullanıcı adları (virgülle ayrılmış) |
-| `{total_score}` | Tweetlerin ortalama final puanı |
-| `{first_tweet}` | İlk tweetin ham metni |
+| `{tweet_count}` | Sabit 1 (tweet bazlı üretimde her zaman 1) |
+| `{sources}` | Tweet'in geldiği kaynak hesap kullanıcı adı |
+| `{total_score}` | Tweet'in final puanı |
+| `{first_tweet}` | Aynı tweet metni (tweet bazlı üretimde tek tweet olduğu için ilk ve tek) |
 
 **Validasyon:** Prompt kaydedilirken sistem metin içindeki tüm `{...}` ifadelerini tarar. Geçersiz bir placeholder (örn: `{tweet_contents}`) tespit edilirse kayıt reddedilir ve kullanıcı uyarı mesajı görür.
 
@@ -1384,17 +1395,21 @@ Havuz seçiminden sonra AI kuyruğuna alınan batch'lerin kaydı.
 
 ### 5.4 ai_generations
 
-AI tarafından üretilen içeriklerin kaydı.
+AI tarafından üretilen içeriklerin kaydı. Her kayıt bir tweet'e karşılık gelir (tweet bazlı üretim).
 
 | Kolon | Tür | Açıklama |
 |-------|-----|----------|
 | id | bigint | Birincik anahtar |
 | ai_queue_id | bigint FK | İlişkili AI kuyruk kaydı |
+| raw_tweet_id | bigint FK nullable | İlişkili tweet (yeni - tweet bazlı üretim) |
+| source_account_id | bigint FK nullable | Kaynak hesap (denormalize, hızlı erişim için) |
+| category_id | bigint FK nullable | Kategori (hangi kategori promptu kullanıldı) |
+| provider | varchar nullable | Kullanılan provider: gpt4free / opencode |
 | prompt_id | bigint FK nullable | Kullanılan prompt şablonu |
 | model | varchar nullable | Kullanılan model adı |
 | prompt_version | smallint unsigned | Prompt versiyonu |
 | title | varchar nullable | Üretilen haber başlığı |
-| input | json nullable | Girdi verisi (tweet listesi) |
+| input | json nullable | Girdi verisi (tweet ID, metin, kullanıcı adı) |
 | prompt | text nullable | Ham prompt şablonu |
 | full_prompt | text nullable | AI'ye gönderilen tam prompt |
 | ai_response | longText nullable | AI'dan gelen ham yanıt |
@@ -1406,18 +1421,17 @@ AI tarafından üretilen içeriklerin kaydı.
 | generated_at | timestamp nullable | Üretim zamanı |
 | created_at, updated_at | timestamps | Zaman damgaları |
 
-### 5.5 ai_generation_items
+**Indexler:** `[raw_tweet_id, status]`, `[category_id, status]`, `[provider, status]`
 
-Her AI üretiminde hangi tweetlerin kullanıldığını gösteren ilişki tablosu.
+**İlişkiler:**
+- belongsTo RawTweet
+- belongsTo SourceAccount
+- belongsTo SourceCategory
+- belongsTo AiQueue
+- belongsTo Prompt
+- hasMany AiGenerationLog
 
-| Kolon | Tür | Açıklama |
-|-------|-----|----------|
-| id | bigint | Birincik anahtar |
-| ai_generation_id | bigint FK | İlişkili AI üretimi |
-| raw_tweet_id | bigint FK | İlişkili tweet |
-| created_at, updated_at | timestamps | Zaman damgaları |
-
-### 5.6 ai_generation_logs
+### 5.5 ai_generation_logs
 
 AI workflow boyunca tüm işlemlerin loglandığı tablo.
 
@@ -1449,18 +1463,21 @@ Her dakika scheduler tarafından tetiklenir. Completed durumundaki PoolBatch'ler
 
 ### 6.2 AIGenerationJob
 
-AI provider ile içerik üretimini yürütür.
+AI provider ile tweet bazlı içerik üretimini yürütür.
 
 **Akış:**
 1. AiQueue kaydını `processing` durumuna alır.
-2. Ayarlardan aktif provider'ı belirler.
-3. Seçili tweet'leri toplar.
-4. Tweet'in kategorisine göre aktif prompt'u bulur.
-5. Prompt değişkenlerini gerçek verilerle değiştirir.
-6. AI provider'a istek gönderir.
-7. Sonucu `ai_generations` tablosuna kaydeder.
-8. AiQueue'yu `completed` durumuna alır.
-9. Başarısız olursa `failed` durumuna alır ve hata loglar.
+2. Batch'teki seçili tweetleri toplar (`PoolBatchItem` → `rawTweet`).
+3. Her tweet için döngü başlatır:
+   a. Tweetin kaynak hesabının kategorisine göre aktif prompt'u bulur.
+   b. Prompt değişkenlerini (`{tweet_content}` vb.) tweet verisiyle değiştirir.
+   c. AI provider'a istek gönderir.
+   d. Sonucu `ai_generations` tablosuna tweet bazlı kaydeder (1 tweet = 1 AiGeneration).
+   e. Hata olursa loglar ve diğer tweetlere devam eder.
+4. Tüm tweetler işlendikten sonra AiQueue'yu `completed` durumuna alır.
+5. Tüm tweetler başarısız olursa `failed` durumuna alır ve hata loglar.
+
+**Önemli:** Bir tweet'in hatası diğer tweetlerin işlenmesini engellemez. Her tweet bağımsız olarak üretilir.
 
 ---
 
@@ -1509,32 +1526,37 @@ AI kuyruğuna alınan batch'lerin listesi.
 
 **Detay sayfası (`/admin/ai-queue/{id}`):**
 - Kuyruk bilgileri
-- İlişkili AI üretimi linki
+- Bu kuyruktan üretilen tüm AI üretimlerinin listesi (tweet bazlı, her satırda 1 tweet, 1 çıktı, durum badge'i ve detay linki)
 - İşlem logları
 
 ### 7.4 AI Üretimleri (`/admin/ai-generations`)
 
-AI tarafından üretilen içeriklerin listesi ve detayları.
+AI tarafından üretilen içeriklerin listesi ve detayları. Her satır bir tweet'e karşılık gelir.
 
 **Liste sütunları:**
 - ID
-- Tarih
-- Başlık
+- Tweet (içerik ve tweet ID)
+- Kaynak Hesap (kullanıcı adı)
+- Kategori (badge)
+- Provider
 - Model
-- Prompt Versiyon
+- Tarih
+- Prompt Versiyonu
 - Süre (ms)
 - Durum (Taslak / Onaylandı / Reddedildi / Yayınlandı)
 
+**Arama:** Tweet içeriği, model veya üretilen içerik içinde arama yapılabilir.
+
 **Detay sayfası (`/admin/ai-generations/{id}`):**
-- Üretim bilgileri (model, versiyon, süre)
-- Token kullanımı
-- Review butonları (Onayla / Reddet / Yayınla)
-- Kullanılan tweetler
-- Ham prompt
-- Tam prompt (AI'ye gönderilen)
-- Üretilen haber metni
-- Hata detayı (varsa)
-- İşlem logları
+- **Kaynak Tweet:** Kullanıcı adı, tweet metni, etkileşim sayıları (like, RT, reply, view), tarih, kategori
+- **Üretim Bilgileri:** Provider, Model, Prompt Versiyonu, Süre, Durum, Üretim Tarihi, Batch linki
+- **Token Kullanımı:** Prompt tokens, completion tokens, total tokens
+- **Review butonları** (Onayla / Reddet / Yayınla)
+- **Prompt:** Ham prompt şablonu
+- **Render Edilmiş Prompt:** AI'ye gönderilen tam prompt
+- **AI Çıktısı:** Üretilen haber metni
+- **Hata detayı** (varsa)
+- **İşlem logları
 
 ---
 
@@ -1583,6 +1605,7 @@ database/migrations/
   2026_06_02_100006_create_ai_generation_logs_table.php
   2026_06_02_100007_update_ai_settings_for_providers.php
   2026_06_02_100008_add_source_category_to_prompts.php
+  2026_06_03_000001_drop_ai_generation_items_and_update_ai_generations.php
 
 services/gpt4free/
   ai_generate.py
@@ -1592,7 +1615,6 @@ app/Models/
   Prompt.php
   AiQueue.php
   AiGeneration.php
-  AiGenerationItem.php
   AiGenerationLog.php
 
 app/Services/NewsCollection/
@@ -1649,9 +1671,25 @@ resources/views/admin/
 ### Güncellenen Dosyalar
 
 ```
-app/Models/PoolBatch.php              (aiQueue ilişkisi eklendi)
-routes/admin.php                      (AI route'ları eklendi)
-routes/console.php                    (AIQueueJob scheduler eklendi)
-resources/views/admin/layouts/partials/sidebar.blade.php (AI menüsü eklendi)
-config/news_collection.php            (gpt4free konfigürasyonu eklendi)
+app/Models/RawTweet.php                  (aiGenerations ilişkisi eklendi)
+app/Models/AiQueue.php                   (generations hasMany ilişkisi)
+app/Models/AiGeneration.php              (rawTweet, sourceAccount, category ilişkileri; raw_tweet_id, provider kolonları)
+app/Services/NewsCollection/AIGenerationService.php  (tweet bazlı üretime geçildi)
+app/Services/NewsCollection/PromptResolverService.php (resolveForTweet metodu eklendi)
+app/Http/Controllers/Admin/AiGenerationController.php (show load ilişkileri güncellendi)
+app/Http/Controllers/Admin/AiQueueController.php      (show load ilişkileri güncellendi)
+app/Queries/Admin/AiGenerationQuery.php               (tweet bazlı arama ve eager load)
+resources/views/admin/ai-generations/index.blade.php  (tweet bazlı kolonlar)
+resources/views/admin/ai-generations/show.blade.php   (tweet bazlı detay)
+resources/views/admin/ai-queue/show.blade.php          (generations listesi)
+routes/admin.php                      (AI route'ları)
+routes/console.php                    (AIQueueJob scheduler)
+resources/views/admin/layouts/partials/sidebar.blade.php (AI menüsü)
+config/news_collection.php            (gpt4free konfigürasyonu)
+```
+
+### Kaldırılan Dosyalar
+
+```
+app/Models/AiGenerationItem.php  (tablo düşürüldü, model kaldırıldı)
 ```

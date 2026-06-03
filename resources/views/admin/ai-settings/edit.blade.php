@@ -98,6 +98,11 @@
                     label="AI uretimini aktif et"
                     :checked="old('is_active', $settings->is_active)"
                 />
+                <x-admin.form.checkbox
+                    name="auto_approve"
+                    label="AI uretimlerini otomatik onayla"
+                    :checked="old('auto_approve', $settings->auto_approve)"
+                />
             </div>
 
             <div class="form-actions" style="margin-top: 24px;">

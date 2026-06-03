@@ -3,11 +3,11 @@
 namespace App\Services\NewsCollection;
 
 use App\Models\AiGeneration;
-use App\Models\AiGenerationItem;
 use App\Models\AiQueue;
 use App\Models\AiSetting;
 use App\Models\PoolBatchItem;
 use App\Models\Prompt;
+use App\Models\RawTweet;
 use App\Services\Admin\AiQueueService;
 use Illuminate\Support\Facades\DB;
 
@@ -18,9 +18,10 @@ class AIGenerationService
         private AIGenerationLogService $logService,
         private PromptResolverService $promptResolver,
         private AIProviderFactory $providerFactory,
+        private AIReviewService $reviewService,
     ) {}
 
-    public function processQueue(AiQueue $queue): AiGeneration
+    public function processQueue(AiQueue $queue): void
     {
         $settings = AiSetting::singleton();
 
@@ -38,45 +39,41 @@ class AIGenerationService
             'provider' => $settings->provider,
         ]);
 
-        $startTime = microtime(true);
+        $selectedTweets = $this->getSelectedTweets($queue);
 
-        try {
-            $selectedTweets = $this->getSelectedTweets($queue);
-            $prompt = $this->resolvePrompt($settings, $selectedTweets);
-
-            $provider = $this->providerFactory->make($settings->provider);
-
-            $model = $this->getModelForProvider($settings);
-
-            $response = $provider->generate(
-                $prompt['full_prompt'],
-                $model,
-                $settings->timeout,
-                $settings->retry_count
-            );
-
-            $duration = (int) round((microtime(true) - $startTime) * 1000);
-
-            $generation = $this->saveGeneration($queue, $settings, $prompt, $response, $duration, $selectedTweets);
-
+        if ($selectedTweets->isEmpty()) {
             $this->queueService->markCompleted($queue);
-            $this->logService->logInfo($generation, 'AI uretimi basariyla tamamlandi.', [
-                'provider' => $response['provider'] ?? $settings->provider,
-                'model' => $response['model'] ?? $model,
-                'duration_ms' => $duration,
-                'tweet_count' => $selectedTweets->count(),
-            ]);
+            $this->logService->logQueue($queue, 'warning', 'Batch\'te secilmis tweet yok, uretim atlandi.');
 
-            return $generation;
-
-        } catch (\Throwable $e) {
-            $this->queueService->markFailed($queue, $e->getMessage());
-            $this->logService->logQueue($queue, 'error', 'AI uretimi basarisiz oldu.', [
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
+            return;
         }
+
+        $successCount = 0;
+        $failCount = 0;
+
+        foreach ($selectedTweets as $tweet) {
+            try {
+                $this->generateForTweet($tweet, $queue, $settings);
+                $successCount++;
+            } catch (\Throwable $e) {
+                $failCount++;
+                $this->logService->logQueue($queue, 'error', "Tweet ID {$tweet->id} icin AI uretimi basarisiz oldu.", [
+                    'raw_tweet_id' => $tweet->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($failCount > 0 && $successCount === 0) {
+            $this->queueService->markFailed($queue, "Tum tweetler icin AI uretimi basarisiz oldu. ({$failCount} hata)");
+            throw new \RuntimeException("Tum tweetler icin AI uretimi basarisiz oldu.");
+        }
+
+        $this->queueService->markCompleted($queue);
+        $this->logService->logQueue($queue, 'info', 'AI uretimi tamamlandi.', [
+            'success_count' => $successCount,
+            'fail_count' => $failCount,
+        ]);
     }
 
     private function getSelectedTweets(AiQueue $queue): \Illuminate\Support\Collection
@@ -87,56 +84,63 @@ class AIGenerationService
             ->where('is_selected', true)
             ->orderBy('final_score', 'desc')
             ->get()
-            ->map(fn (PoolBatchItem $item) => [
-                'id' => $item->rawTweet->id,
-                'tweet_id' => $item->rawTweet->tweet_id,
-                'tweet_text' => $item->rawTweet->tweet_text,
-                'username' => $item->rawTweet->sourceAccount?->username,
-                'category_id' => $item->rawTweet->sourceAccount?->category_id,
-                'final_score' => (float) $item->final_score,
-            ]);
+            ->pluck('rawTweet')
+            ->filter();
     }
 
-    private function resolvePrompt(AiSetting $settings, \Illuminate\Support\Collection $tweets): array
+    private function generateForTweet(RawTweet $tweet, AiQueue $queue, AiSetting $settings): AiGeneration
     {
-        $activePrompt = null;
+        $prompt = $this->resolvePrompt($settings, $tweet);
+        $provider = $this->providerFactory->make($settings->provider);
+        $model = $this->getModelForProvider($settings);
 
-        $firstTweetCategoryId = $tweets->first()['category_id'] ?? null;
+        $resolvedPrompt = $this->promptResolver->resolveForTweet($prompt->prompt_text, $tweet);
+        $fullPrompt = $this->buildFullPrompt($resolvedPrompt, $tweet);
 
-        if ($firstTweetCategoryId) {
+        $startTime = microtime(true);
+
+        $response = $provider->generate(
+            $fullPrompt,
+            $model,
+            $settings->timeout,
+            $settings->retry_count
+        );
+
+        $duration = (int) round((microtime(true) - $startTime) * 1000);
+
+        return $this->saveGeneration($queue, $settings, $tweet, $prompt, $response, $duration, $fullPrompt);
+    }
+
+    private function resolvePrompt(AiSetting $settings, RawTweet $tweet): Prompt
+    {
+        $categoryId = $tweet->sourceAccount?->category_id;
+
+        if ($categoryId) {
             $activePrompt = Prompt::query()
-                ->where('source_category_id', $firstTweetCategoryId)
+                ->where('source_category_id', $categoryId)
                 ->where('is_active', true)
                 ->first();
         }
 
-        if (! $activePrompt && $settings->active_prompt_id) {
+        if (empty($activePrompt) && $settings->active_prompt_id) {
             $activePrompt = Prompt::find($settings->active_prompt_id);
         }
 
-        if (! $activePrompt) {
+        if (empty($activePrompt)) {
             $activePrompt = Prompt::query()
                 ->where('is_active', true)
                 ->whereNull('source_category_id')
                 ->first();
         }
 
-        if (! $activePrompt) {
-            $defaultText = $this->defaultPrompt();
-        } else {
-            $defaultText = $activePrompt->prompt_text;
+        if (empty($activePrompt)) {
+            $activePrompt = new Prompt([
+                'prompt_text' => $this->defaultPrompt(),
+                'version' => 1,
+            ]);
         }
 
-        $resolvedPrompt = $this->promptResolver->resolve($defaultText, $tweets);
-        $fullPrompt = $this->promptResolver->buildFullPrompt($resolvedPrompt, $tweets);
-
-        return [
-            'prompt_id' => $activePrompt?->id,
-            'prompt_version' => $activePrompt?->version ?? 1,
-            'prompt' => $defaultText,
-            'full_prompt' => $fullPrompt,
-            'resolved_prompt' => $resolvedPrompt,
-        ];
+        return $activePrompt;
     }
 
     private function getModelForProvider(AiSetting $settings): ?string
@@ -150,21 +154,30 @@ class AIGenerationService
     private function saveGeneration(
         AiQueue $queue,
         AiSetting $settings,
-        array $promptData,
+        RawTweet $tweet,
+        Prompt $prompt,
         mixed $response,
         int $duration,
-        \Illuminate\Support\Collection $tweets
+        string $fullPrompt
     ): AiGeneration {
-        return DB::transaction(function () use ($queue, $settings, $promptData, $response, $duration, $tweets) {
+        $generation = DB::transaction(function () use ($queue, $settings, $tweet, $prompt, $response, $duration, $fullPrompt) {
             $generation = AiGeneration::create([
                 'ai_queue_id' => $queue->id,
-                'prompt_id' => $promptData['prompt_id'],
+                'raw_tweet_id' => $tweet->id,
+                'source_account_id' => $tweet->source_account_id,
+                'category_id' => $tweet->sourceAccount?->category_id,
+                'provider' => $settings->provider,
+                'prompt_id' => $prompt->id,
                 'model' => $response['model'] ?? $settings->opencode_model ?? $settings->model_name ?? $settings->provider,
-                'prompt_version' => $promptData['prompt_version'],
+                'prompt_version' => $prompt->version ?? 1,
                 'title' => $response['title'] ?? null,
-                'input' => $tweets->toArray(),
-                'prompt' => $promptData['prompt'],
-                'full_prompt' => $promptData['full_prompt'],
+                'input' => [
+                    'tweet_id' => $tweet->tweet_id,
+                    'tweet_text' => $tweet->tweet_text,
+                    'username' => $tweet->sourceAccount?->username,
+                ],
+                'prompt' => $prompt->prompt_text,
+                'full_prompt' => $fullPrompt,
                 'ai_response' => $response['raw'] ?? json_encode($response),
                 'generated_news' => $response['content'] ?? $response['raw'] ?? null,
                 'token_usage' => $response['token_usage'] ?? null,
@@ -173,27 +186,52 @@ class AIGenerationService
                 'generated_at' => now(),
             ]);
 
-            foreach ($tweets as $tweet) {
-                AiGenerationItem::create([
-                    'ai_generation_id' => $generation->id,
-                    'raw_tweet_id' => $tweet['id'],
-                ]);
-            }
+            $this->logService->logInfo($generation, 'AI uretimi basariyla tamamlandi.', [
+                'provider' => $response['provider'] ?? $settings->provider,
+                'model' => $response['model'] ?? $settings->model_name,
+                'duration_ms' => $duration,
+                'raw_tweet_id' => $tweet->id,
+            ]);
 
             return $generation;
         });
+
+        if ($settings->auto_approve) {
+            try {
+                $this->reviewService->approve($generation);
+            } catch (\Throwable $e) {
+                $this->logService->logWarning($generation, 'Otomatik onay basarisiz oldu.', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $generation;
+    }
+
+    private function buildFullPrompt(string $resolvedPrompt, RawTweet $tweet): string
+    {
+        $username = $tweet->sourceAccount?->username ?? 'bilinmiyor';
+        $tweetText = $tweet->tweet_text ?? '';
+
+        $tweetBlock = "Kaynak: @{$username}\nTweet: {$tweetText}";
+
+        if (str_contains($resolvedPrompt, '{tweet_content}')) {
+            return $resolvedPrompt;
+        }
+
+        return "{$resolvedPrompt}\n\n--- TWEET ---\n\n{$tweetBlock}";
     }
 
     private function defaultPrompt(): string
     {
         return <<<'PROMPT'
-Asagidaki tweetler bir haber olusturmak icin secilmistir.
-Bu tweetleri kullanarak kapsamli ve objektif bir haber metni olustur.
+Asagidaki tweeti kullanarak kapsamli ve objektif bir haber metni olustur.
 
 {tweet_content}
 
-Tum tweetleri dikkate al. Haber dilinde, tarafsiz ve bilgilendirici bir metin yaz.
-Haber basligi ve govde metni olustur. Toplam 250-400 kelime arasinda olsun.
+Haber dilinde, tarafsiz ve bilgilendirici bir metin yaz.
+Haber basligi ve govde metni olustur. Toplam 200-300 kelime arasinda olsun.
 
 Cikti formati:
 BASLIK: [Haber Basligi]

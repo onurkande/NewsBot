@@ -79,6 +79,7 @@
                         <th>Etkilesim</th>
                         <th>Final</th>
                         <th>Sira</th>
+                        <th style="text-align: right">Islemler</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -95,10 +96,17 @@
                             <td><span class="badge primary">{{ number_format($item->engagement_score, 2) }}</span></td>
                             <td><span class="badge success">{{ number_format($item->final_score, 2) }}</span></td>
                             <td><span class="data-cell-mono">{{ $item->rank }}</span></td>
+                            <td>
+                                <div class="data-cell-actions" style="justify-content: flex-end">
+                                    <a class="btn--icon" href="{{ route('admin.raw-tweets.show', $item->rawTweet) }}" aria-label="Detay">
+                                        <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                                    </a>
+                                </div>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7">
+                            <td colspan="8">
                                 <x-admin.empty-state
                                     title="Secilen tweet yok"
                                     description="Bu dongude hic tweet secilmemis."
@@ -123,6 +131,7 @@
                         <th>Etkilesim</th>
                         <th>Final</th>
                         <th>Sira</th>
+                        <th style="text-align: right">Islemler</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -139,10 +148,17 @@
                             <td><span class="badge primary">{{ number_format($item->engagement_score, 2) }}</span></td>
                             <td><span class="badge primary">{{ number_format($item->final_score, 2) }}</span></td>
                             <td><span class="data-cell-mono">{{ $item->rank }}</span></td>
+                            <td>
+                                <div class="data-cell-actions" style="justify-content: flex-end">
+                                    <a class="btn--icon" href="{{ route('admin.raw-tweets.show', $item->rawTweet) }}" aria-label="Detay">
+                                        <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                                    </a>
+                                </div>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7">
+                            <td colspan="8">
                                 <x-admin.empty-state
                                     title="Secilmeyen tweet yok"
                                     description="Tum aday tweetler secilmis."
