@@ -4,11 +4,30 @@ from g4f.client import Client
 # 1. ELLE SEÇİM YAPABİLECEĞİN YER (None bırakırsan otomatik seçer)
 SECILI_PROVIDER = None 
 
-# Otomatik seçim için kararlı sağlayıcı havuzu
-OTOMATIK_HAVUZ = [
-    "DuckDuckGo", "BlackboxPro", "PollinationsAI", "Liaobots", 
-    "DeepInfra", "Gemini", "HuggingChat", "OperaAria", "You"
-]
+# Otomatik seçim için sağlayıcı havuzu - burada otomatik model seçimini services\gpt4free\havuz dosyasından çeksin lütfen.
+# OTOMATIK_HAVUZ = [
+#     "DuckDuckGo", "BlackboxPro", "PollinationsAI", "Liaobots", 
+#     "DeepInfra", "Gemini", "HuggingChat", "OperaAria", "You"
+# ]
+
+def load_providers_from_havuz():
+    """havuz dosyasından sağlayıcıları oku."""
+    import os
+    havuz_path = os.path.join(os.path.dirname(__file__), 'havuz')
+    
+    try:
+        with open(havuz_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Başlık satırını atla ve sağlayıcıları çıkar
+        lines = content.strip().split('\n')[1:]
+        providers = [line.strip() for line in lines if line.strip()]
+        return providers
+    except FileNotFoundError:
+        print(f"[!] Hata: {havuz_path} dosyası bulunamadı.")
+        return []
+
+OTOMATIK_HAVUZ = load_providers_from_havuz()
 
 def get_provider_by_name(name):
     """İsmi verilen sağlayıcıyı g4f kütüphanesinden çeker."""
@@ -38,7 +57,7 @@ def main():
             response = client.chat.completions.create(
                 model="", # Otomatik model seçimi
                 provider=p,
-                messages=[{"role": "user", "content": "Yapay zeka nedir, kısaca anlat."}]
+                messages=[{"role": "user", "content": "Yapay zeka nedir, çok kısaca anlat."}]
             )
             
             # Başarılı ise bilgileri yazdır

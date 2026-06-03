@@ -11,3 +11,5 @@ Artisan::command('inspire', function () {
 Schedule::command('news:fetch-due-sources')->everyMinute()->withoutOverlapping();
 
 Schedule::job(new \App\Jobs\PoolSelectionJob)->everyMinute()->withoutOverlapping();
+
+Schedule::job(new \App\Jobs\AIQueueJob)->everyMinute()->withoutOverlapping();

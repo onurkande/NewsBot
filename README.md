@@ -326,15 +326,7 @@ Planlanan geliştirmeler:
 
 * Instagram entegrasyonu
 * Telegram entegrasyonu
-* Discord entegrasyonu
 * Çoklu dil desteği
 * Görsel üretimi
 * Video içerik üretimi
 * Trend analiz sistemi
-* İnsan onay mekanizması
-
----
-
-## Lisans
-
-MIT License
