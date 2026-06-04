@@ -17,6 +17,9 @@ class PoolSetting extends Model
         'tweet_count_min',
         'tweet_count_max',
         'is_active',
+        'media_download_enabled',
+        'published_media_retention_hours',
+        'unpublished_media_retention_hours',
         'next_run_at',
     ];
 
@@ -30,6 +33,9 @@ class PoolSetting extends Model
             'tweet_count_min' => 'integer',
             'tweet_count_max' => 'integer',
             'is_active' => 'boolean',
+            'media_download_enabled' => 'boolean',
+            'published_media_retention_hours' => 'integer',
+            'unpublished_media_retention_hours' => 'integer',
             'next_run_at' => 'datetime',
         ];
     }
@@ -51,6 +57,9 @@ class PoolSetting extends Model
                 'tweet_count_min' => 3,
                 'tweet_count_max' => 5,
                 'is_active' => true,
+                'media_download_enabled' => true,
+                'published_media_retention_hours' => 24,
+                'unpublished_media_retention_hours' => 48,
                 'next_run_at' => null,
             ]);
         }

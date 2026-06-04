@@ -2,6 +2,7 @@
 
 namespace App\Services\NewsCollection;
 
+use App\Jobs\DownloadTweetMediaJob;
 use App\Models\PoolBatch;
 use App\Models\PoolBatchItem;
 use App\Models\PoolSetting;
@@ -113,7 +114,19 @@ class PoolSelectionService
                 ]);
         });
 
-        // 7. Ayarlarin next_run_at guncelle
+        // 7. Secilen tweetlerin medyalarini indir
+        if ($settings->media_download_enabled && ! empty($selectedTweetIds)) {
+            foreach ($selectedTweetIds as $tweetId) {
+                DownloadTweetMediaJob::dispatch($tweetId);
+            }
+
+            $this->log('info', 'Secilen tweetler icin medya indirme joblari olusturuldu.', [
+                'batch_no' => $batchNo,
+                'selected_count' => count($selectedTweetIds),
+            ]);
+        }
+
+        // 8. Ayarlarin next_run_at guncelle
         $settings->update(['next_run_at' => $nextRunAt]);
 
         $this->log('info', 'Havuz secimi tamamlandi.', [

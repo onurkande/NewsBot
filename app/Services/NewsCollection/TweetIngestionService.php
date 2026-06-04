@@ -16,6 +16,10 @@ use Illuminate\Support\Str;
 
 class TweetIngestionService
 {
+    public function __construct(
+        private TweetMediaService $mediaService
+    ) {}
+
     public function ingest(SourceAccount $account, array $tweets): array
     {
         $created = 0;
@@ -48,6 +52,8 @@ class TweetIngestionService
                     continue;
                 }
 
+                $mediaInfo = $this->mediaService->extractMediaFromPayload($tweetData);
+
                 $tweet = RawTweet::create([
                     'source_account_id' => $account->id,
                     'tweet_id' => $tweetId,
@@ -61,6 +67,9 @@ class TweetIngestionService
                     'view_count' => (int) ($tweetData['view_count'] ?? 0),
                     'quote_count' => (int) ($tweetData['quote_count'] ?? 0),
                     'fetched_at' => now(),
+                    'media_urls' => $mediaInfo['media_urls'],
+                    'media_count' => $mediaInfo['media_count'],
+                    'media_type' => $mediaInfo['media_type'],
                 ]);
 
                 $normalized = $this->normalize($tweet->tweet_text);

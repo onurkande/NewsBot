@@ -30,6 +30,11 @@ class RawTweet extends Model
         'selected_at',
         'selected_for_ai',
         'ai_sent_at',
+        'media_urls',
+        'media_count',
+        'media_type',
+        'media_downloaded_at',
+        'media_paths',
     ];
 
     protected function casts(): array
@@ -48,6 +53,11 @@ class RawTweet extends Model
             'reply_count' => 'integer',
             'view_count' => 'integer',
             'quote_count' => 'integer',
+            'media_urls' => 'array',
+            'media_count' => 'integer',
+            'media_type' => 'string',
+            'media_downloaded_at' => 'datetime',
+            'media_paths' => 'array',
         ];
     }
 
