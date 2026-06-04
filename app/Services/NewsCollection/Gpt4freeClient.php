@@ -26,7 +26,7 @@ class Gpt4freeClient
 
         $process = new Process($command, $scriptDir);
         $process->setTimeout($timeout);
-        $process->setEnv($this->buildWindowsEnv());
+        $process->setEnv($this->buildProcessEnv());
 
         $process->run();
 
@@ -84,18 +84,41 @@ class Gpt4freeClient
         return null;
     }
 
-    private function buildWindowsEnv(): array
+    private function buildProcessEnv(): array
     {
-        $env = getenv();
+        $env = [];
 
-        $keys = ['USERPROFILE', 'SYSTEMROOT', 'WINDIR', 'PATH', 'TMP', 'TEMP'];
-
-        foreach ($keys as $key) {
-            $value = getenv($key);
-            if ($value !== false && $value !== '') {
+        foreach ($_SERVER as $key => $value) {
+            if (is_string($value)) {
                 $env[$key] = $value;
             }
         }
+
+        foreach ($_ENV as $key => $value) {
+            if (is_string($value)) {
+                $env[$key] = $value;
+            }
+        }
+
+        $path = getenv('PATH');
+
+        if ($path !== false && $path !== '') {
+            $env['PATH'] = $path;
+        }
+
+        $home = getenv('HOME');
+
+        if ($home !== false && $home !== '') {
+            $env['HOME'] = $home;
+        }
+
+        $userProfile = getenv('USERPROFILE');
+
+        if ($userProfile !== false && $userProfile !== '') {
+            $env['USERPROFILE'] = $userProfile;
+        }
+
+        $env['PYTHONIOENCODING'] = 'utf-8';
 
         return $env;
     }
