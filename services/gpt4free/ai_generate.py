@@ -45,6 +45,8 @@ def _ensure_home_env():
                 os.environ["HOME"] = os.path.dirname(os.path.abspath(__file__))
 
 _ensure_home_env()
+if "PATH" not in os.environ:
+    os.environ["PATH"] = "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/bin:/sbin"
 
 # Unbuffered stdout so PHP can read JSON output immediately
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
