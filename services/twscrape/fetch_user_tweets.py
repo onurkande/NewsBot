@@ -9,6 +9,28 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 
 def tweet_to_dict(tweet):
+    # Fotoğraflar
+    photo_urls = [photo.url for photo in tweet.media.photos]
+
+    # Videolar (variants içinde en yüksek kaliteli URL)
+    video_urls = []
+    for video in tweet.media.videos:
+        if video.variants:
+            best = max(video.variants, key=lambda v: v.bitrate or 0)
+            if best.url:
+                video_urls.append(best.url)
+
+    # Animasyonlu GIF'ler (video olarak döner, aynı mantık)
+    animated_gif_urls = []
+    for gif in tweet.media.animated_gif:
+        if gif.variants:
+            best = max(gif.variants, key=lambda v: v.bitrate or 0)
+            if best.url:
+                animated_gif_urls.append(best.url)
+
+    # Birleşik medya listesi (AI_CONTEXT uyumlu)
+    all_media = photo_urls + video_urls + animated_gif_urls
+
     return {
         "tweet_id": str(tweet.id),
         "tweet_url": tweet.url,
@@ -21,8 +43,10 @@ def tweet_to_dict(tweet):
         "view_count": tweet.viewCount or 0,
         "quote_count": tweet.quoteCount or 0,
         "links": [link.url for link in tweet.links],
-        "photo_urls": [photo.url for photo in tweet.media.photos],
-        "hashtags": tweet.hashtags,
+        "photo_urls": photo_urls,
+        "video_urls": video_urls,
+        "animated_gif_urls": animated_gif_urls,
+        "media_urls": all_media,
     }
 
 

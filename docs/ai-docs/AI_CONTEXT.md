@@ -237,6 +237,8 @@ FetchSourceAccountTweets
 PoolSelectionJob
 GenerateAiContentJob
 PublishPostJob
+DownloadTweetMediaJob
+MediaCleanupJob
 
 Uzun işlemler Controller içerisinde çalıştırılmaz.
 
@@ -293,6 +295,7 @@ Tamamlanan:
 - Tweet toplama sistemi
 - Duplicate kontrol sistemi
 - Tweet seçim havuzu sistemi
+- Tweet medya yönetimi sistemi
 
 ---
 
@@ -333,6 +336,145 @@ Sonuç:
 TweetIngestionService
 
 ile sisteme kaydedilir.
+
+---
+
+# Tweet Medya Yönetimi
+
+Amac: Gereksiz depolamayı önlemek, sadece seçilen tweetlerin medyasını indirmek, publish aşamasında orijinal medyayı kullanabilmek.
+
+Akış:
+
+Tweet Fetch
+→ Media Metadata Kaydı (indirmeden URL'leri kaydet)
+→ Pool Selection
+→ Seçilirse DownloadTweetMediaJob dispatch
+→ Media Download → storage/app/media/tweets/{tweet_id}/
+→ AI Workflow (medya yok, sadece metin)
+→ Approved
+→ Published (gelecek, medya hazır)
+→ MediaCleanupJob (hourly, retention bazlı temizlik)
+
+---
+
+## Tweet Toplama
+
+Tweet cekilirken medya dosyaları indirilmez. Sadece medya bilgileri kaydedilir.
+
+Python fetch_user_tweets.py artık şu alanları cikariyor:
+
+- photo_urls
+- video_urls
+- animated_gif_urls
+- media_urls (hepsinin birlesik hali)
+
+TweetIngestionService TweetMediaService::extractMediaFromPayload() ile bilgileri cikartip kaydeder:
+
+- media_urls (JSON)
+- media_count (integer)
+- media_type (photo / video / animated_gif / mixed)
+
+---
+
+## Havuz Secimi Sonrasi
+
+Kural: Havuza seçilmeyen tweetlerde medya indirilmez.
+
+PoolSelectionService secim sonrasi DownloadTweetMediaJob::dispatch($tweetId) cagirir.
+
+Indirme Queue uzerinden async yapilir.
+
+---
+
+## AI Workflow
+
+Mevcut AI workflow korunur. AI yalnızca tweet metnini kullanir. {tweet_content} placeholder'i degismez. Medya AI'ya gönderilmez.
+
+---
+
+## Publish Uyumluluğu
+
+Publish sistemi şu an yapılmadı. Ancak medya yapısı publish aşamasında tekrar indirme gerektirmeyecek şekilde tasarlandı: media_paths uzerinden storage'daki dosyalara direk erisim saglanir.
+
+---
+
+## Admin Ayarları
+
+pool_settings tablosunda uclu ayar:
+
+- media_download_enabled (default true)
+- published_media_retention_hours (default 24)
+- unpublished_media_retention_hours (default 48)
+
+---
+
+## Media Cleanup
+
+MediaCleanupJob saatlik calisir.
+
+Gorevleri:
+
+1. published_media_retention_hours suresi dolmus yayinlanmis medyalari temizle
+2. unpublished_media_retention_hours suresi dolmus yayinlanmamis medyalari temizle
+3. Veritabanı kayitlarini guncelle (media_paths = null, media_downloaded_at = null)
+4. SystemLog uzerinden log olustur
+
+Not: Published durumu icin ai_generations.status = 'published' beklenir. Publish sistemi eklenmeden once bu durum olusmayacagi icin cleanup bos isler.
+
+---
+
+## Loglama
+
+SystemLog uzerinden module = 'media_management' ile loglanir.
+
+Olaylar:
+
+- media_downloaded
+- media_download_failed
+- media_deleted
+- media_exists
+- cleanup_completed
+- cleanup_failed
+
+---
+
+## Veritabanı Alanları
+
+raw_tweets:
+
+- media_urls (json)
+- media_count (tinyint unsigned)
+- media_type (varchar 20)
+- media_downloaded_at (timestamp nullable)
+- media_paths (json, lokal dosya yollari)
+
+pool_settings:
+
+- media_download_enabled (boolean)
+- published_media_retention_hours (smallint unsigned)
+- unpublished_media_retention_hours (smallint unsigned)
+
+---
+
+## Service Katmanı
+
+NewsCollection:
+- TweetMediaService (extractMediaFromPayload, downloadForTweet, deleteMedia, cleanupExpired)
+
+---
+
+## Job Katmanı
+
+- DownloadTweetMediaJob: Seçilen tweetin medyasini async indirir
+- MediaCleanupJob: Saatlik retention bazli temizlik yapar
+
+---
+
+## Scheduler
+
+routes/console.php:
+
+Schedule::job(new MediaCleanupJob)->hourly()->withoutOverlapping();
 
 ---
 
@@ -567,13 +709,30 @@ Havuz seçiminden sonra seçilen tweetlerin AI ile haberleştirilmesini sağlaya
 
 ## Akış
 
+### auto_approve = false (varsayılan)
+
 Pool Selection
 → AI Queue
 → Her tweet için ayrı AI üretimi
-→ AI Generation (1 üretim = 1 tweet)
-→ Review
-→ Publish Queue
-→ Published
+→ AI Generation (1 üretim = 1 tweet) → `draft`
+→ Admin Onayı (approve/reject)
+→ `approved` / `rejected`
+
+Yeni kayıtlar `draft` olarak oluşur. Admin onayı bekler.
+
+### auto_approve = true
+
+Pool Selection
+→ AI Queue
+→ Her tweet için ayrı AI üretimi
+→ AI Generation (1 üretim = 1 tweet) → `draft`
+→ Sistem Onayı (otomatik approve) → `approved` + `approved_at`
+→ Admin hala reject edebilir
+
+Not:
+- Published durumuna geçmez, maksimum durum `approved`'ır.
+- Admin yetkisi korunur: auto approve ile onaylanan kayıtlar admin tarafından reddedilebilir.
+- Auto approve yalnızca ilk onayı (draft → approved) verir.
 
 Her adımda detaylı loglama yapılır.
 
@@ -612,20 +771,20 @@ PromptResolverService::resolveForTweet() metodu tek tweet için placeholder dold
 
 ## Tablolar
 
-- ai_settings (singleton, provider ayarları)
+- ai_settings (singleton, provider ayarları, auto_approve)
 - prompts (şablonlar, SoftDeletes, source_category_id FK)
 - ai_queues (havuz batch → AI kuyruk)
-- ai_generations (AI çıktıları, tweet bazlı: her kayıt 1 tweet'e karşılık gelir)
+- ai_generations (AI çıktıları, tweet bazlı: her kayıt 1 tweet'e karşılık gelir, approved_at)
 - ai_generation_logs (işlem logları)
 
 Not: ai_generation_items tablosu kaldırılmıştır. Tweet ilişkisi doğrudan ai_generations.raw_tweet_id üzerindendir.
 
 ## Model Katmanı
 
-- AiSetting (singleton, provider, opencode_api_key, opencode_base_url, opencode_model)
+- AiSetting (singleton, provider, opencode_api_key, opencode_base_url, opencode_model, auto_approve)
 - Prompt (name, source_category_id, prompt_text, version, is_active)
 - AiQueue (pool_batch_id, batch_no, status)
-- AiGeneration (ai_queue_id, raw_tweet_id, source_account_id, category_id, provider, model, prompt, full_prompt, ai_response, generated_news, token_usage, status)
+- AiGeneration (ai_queue_id, raw_tweet_id, source_account_id, category_id, provider, model, prompt, full_prompt, ai_response, generated_news, token_usage, status, approved_at)
 - AiGenerationLog (ai_queue_id, ai_generation_id, level, message)
 
 AiGeneration ilişkileri:
@@ -644,13 +803,14 @@ Admin:
 - AiQueueService (kuyruk oluşturma, durum yönetimi)
 
 NewsCollection:
-- AIGenerationService (ana üretim orchestrator, tweet bazlı: processQueue, generateForTweet)
+- AIGenerationService (ana üretim orchestrator, tweet bazlı: processQueue, generateForTweet, auto_approve kontrolü)
 - AIGenerationLogService (log yardımcısı)
 - PromptResolverService (değişken çözümleme, placeholder validasyon, resolveForTweet metodu)
 - AIProviderFactory (provider seçimi)
 - Gpt4freeProvider + Gpt4freeClient (Python g4f entegrasyonu)
 - OpenCodeProvider (HTTP API)
 - AITestService (provider bağlantı testi)
+- AIReviewService (onay/red/yayınlama: approve, reject, publish; approved_at yönetimi)
 
 ## Job Katmanı
 
@@ -676,6 +836,8 @@ NewsCollection:
 draft → approved → published
 draft → rejected
 approved → rejected
+
+Auto Approve ile draft → approved otomatik olarak yapılır (approved_at = now()). Published'a geçiş yapılmaz.
 
 ## Scheduler
 

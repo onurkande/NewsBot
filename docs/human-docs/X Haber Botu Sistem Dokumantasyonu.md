@@ -324,6 +324,8 @@ Laravel Queue kullanılacaktır.
 * PublishPostJob
 * HealthCheckJob
 * SendAlertJob
+* DownloadTweetMediaJob
+* MediaCleanupJob
 
 Scheduler düzenli olarak bu jobları çalıştıracaktır.
 
@@ -706,6 +708,25 @@ Yani sistem şu anda ilgili kullanıcının son tweetlerini ister. Kaç tweet is
 
 Mevcut yapıda `last_seen_tweet_id` Python tarafına gönderilip "sadece bu ID'den sonrasını getir" şeklinde kullanılmıyor. Bu alan şu anda son görülen tweet ID'sini kayıt altında tutmak için güncelleniyor.
 
+### 3.1 Tweet Medya Bilgileri
+
+Python scripti tweetlerle birlikte medya bilgilerini de cikariyor. Tweet cekilirken medya dosyalari fiziksel olarak indirilmez — sadece URL metadata'si toplanir ve Laravel tarafinda veritabanina kaydedilir. Boylece gereksiz depolama kullanimi onlenir.
+
+Scriptin cikardigi alanlar:
+
+- `photo_urls`: Tweete eklenmis fotoğraf linkleri
+- `video_urls`: Tweete eklenmis video linkleri (en yuksek bitrate'li variant secilir)
+- `animated_gif_urls`: Tweete eklenmis animasyonlu GIF linkleri (en yuksek bitrate'li variant secilir)
+- `media_urls`: Yukaridaki uclarin tamaminin birlestirilmis hali
+
+Laravel tarafinda `TweetMediaService::extractMediaFromPayload()` bu bilgileri isleme alir ve sunlari kaydeder:
+
+- `media_urls` (JSON dizisi)
+- `media_count` (toplam medya sayisi)
+- `media_type`: Tek tur varsa `photo` / `video` / `animated_gif`, birden fazla tur varsa `mixed`
+
+Ilgili migration: `2026_06_04_000001_add_media_fields_to_raw_tweets_table.php`
+
 ## 4. Aynı tweetler tekrar nasıl kaydedilmiyor?
 
 Sistem her çalışmada son N tweeti tekrar görebilir. Aynı tweetlerin veritabanına tekrar yazılmasını engelleyen ana mekanizma `raw_tweets.tweet_id` alanıdır:
@@ -750,9 +771,9 @@ Sistemin Twscrape altyapısını ve X hesaplarını (scraper) yönetmek için ge
 
 # Tweet Seçim Havuzu Sistemi
 
-Tweet toplama aşamasından sonra çalışan, toplanan tweetler arasından en değerli olanları otomatik olarak seçen, geçmişi kayıt altına alan ve tekrar seçim yapmayan profesyonel bir havuz seçim sistemidir.
+Tweet toplama aşamasından sonra çalışan, toplanan tweetler arasından en değerli olanları otomatik olarak seçen, seçilenlerin medyalarını indiren, geçmişi kayıt altına alan ve tekrar seçim yapmayan profesyonel bir havuz seçim sistemidir.
 
-Bu aşamada AI API entegrasyonu yapılmaz. Sadece tweetleri toplamak, puanlamak, sıralamak, seçmek ve seçilenleri işaretlemek amaçlanır. AI tarafına gönderme işlemi sonraki geliştirme aşamasında yapılacaktır. Şimdilik `selected_for_ai` ve `ai_sent_at` gibi alanlar hazır tutulur ancak kullanılmaz.
+Bu aşamada AI API entegrasyonu yapılmaz. Sadece tweetleri toplamak, puanlamak, sıralamak, seçmek ve seçilenlerin medyasını indirmek amaçlanır. AI tarafına gönderme işlemi sonraki aşamada yapılır.
 
 ---
 
@@ -771,9 +792,10 @@ Sistem tamamen otomatik çalışır. İş akışı şu şekildedir:
 9. En yüksek puanlı N tweet seçilir.
 10. Seçilen tweetler `raw_tweets.selected_for_pool = true` ve `selected_at = now()` olarak işaretlenir.
 11. Bir `PoolBatch` kaydı ve tüm adaylar için `PoolBatchItem` kayıtları oluşturulur.
-12. İşlem `system_logs` tablosuna `pool_selection` modülü olarak loglanır.
-13. Rastgele bir bekleme süresi üretilir (`selection_interval_min` ile `selection_interval_max` arasında).
-14. `PoolSetting.next_run_at` güncellenir ve scheduler beklemeye geçer.
+12. Seçilen tweetlerin medya indirme job'ları dispatch edilir (eğer `media_download_enabled = true`).
+13. İşlem `system_logs` tablosuna `pool_selection` modülü olarak loglanır.
+14. Rastgele bir bekleme süresi üretilir (`selection_interval_min` ile `selection_interval_max` arasında).
+15. `PoolSetting.next_run_at` güncellenir ve scheduler beklemeye geçer.
 
 ---
 
@@ -841,6 +863,9 @@ Admin panelde dinamik olarak yönetilen ayarlar tablosudur (`pool_settings`). Si
 | `tweet_count_min` | 3 | Seçilecek minimum tweet sayısı |
 | `tweet_count_max` | 5 | Seçilecek maksimum tweet sayısı |
 | `is_active` | true | Havuz seçimi aktif mi |
+| `media_download_enabled` | true | Seçilen tweetlerin medyasını indir |
+| `published_media_retention_hours` | 24 | Yayınlanmış medya saklama süresi (saat) |
+| `unpublished_media_retention_hours` | 48 | Yayınlanmamış medya saklama süresi (saat) |
 | `next_run_at` | null | Bir sonraki çalışma zamanı (otomatik hesaplanır) |
 
 Her seçim döngüsünde:
@@ -866,8 +891,13 @@ Havuz ayarlarının tutulduğu tek kayıtlık tablo.
 | tweet_count_min | tinyint unsigned | Minimum seçilecek tweet sayısı |
 | tweet_count_max | tinyint unsigned | Maksimum seçilecek tweet sayısı |
 | is_active | boolean | Havuz seçimi aktif mi |
+| media_download_enabled | boolean | Seçilen tweetlerin medyasını indir |
+| published_media_retention_hours | smallint unsigned | Yayınlanmış medya saklama süresi (saat) |
+| unpublished_media_retention_hours | smallint unsigned | Yayınlanmamış medya saklama süresi (saat) |
 | next_run_at | timestamp nullable | Bir sonraki çalışma zamanı |
 | created_at, updated_at | timestamps | Zaman damgaları |
+
+İlgili migration: `2026_06_04_000002_add_media_settings_to_pool_settings_table.php`
 
 ### 5.2 pool_batches
 
@@ -906,14 +936,20 @@ Her seçim döngüsünde değerlendirilen tüm aday tweetlerin puanları ve seç
 
 ### 5.4 raw_tweets (güncelleme)
 
-Havuz seçim sistemine destek olmak için eklenen kolonlar:
+Tweet medya yönetimi ve havuz seçim sistemi için eklenen kolonlar:
 
 | Kolon | Tür | Açıklama |
 |-------|-----|----------|
+| media_urls | json nullable | Tweet medya URL listesi (photo, video, animated_gif) |
+| media_count | tinyint unsigned | Toplam medya dosyası sayısı |
+| media_type | varchar(20) nullable | Medya türü: photo / video / animated_gif / mixed |
+| media_downloaded_at | timestamp nullable | Medyaların indirilme zamanı |
+| media_paths | json nullable | Storage'daki lokal dosya yolları |
 | selected_for_pool | boolean default false | Bir kez havuza seçildi mi |
 | selected_at | timestamp nullable | Seçilme tarihi |
-| selected_for_ai | boolean default false | AI aşamasına seçildi mi (gelecek) |
-| ai_sent_at | timestamp nullable | AI aşamasına gönderilme tarihi (gelecek) |
+| selected_for_ai | boolean default false | AI aşamasına seçildi mi |
+
+İlgili migration: `2026_06_04_000001_add_media_fields_to_raw_tweets_table.php`
 
 ---
 
@@ -940,7 +976,24 @@ Laravel Queue_job'ıdır. Her dakika scheduler tarafından tetiklenir.
 
 ```php
 Schedule::job(new PoolSelectionJob)->everyMinute()->withoutOverlapping();
+Schedule::job(new MediaCleanupJob)->hourly()->withoutOverlapping();
 ```
+
+---
+
+### 6.3 Medya İndirme Akışı
+
+Seçim tamamlandıktan sonra, eğer `media_download_enabled = true` ise seçilen her tweet için `DownloadTweetMediaJob` dispatch edilir:
+
+1. `DownloadTweetMediaJob` Queue worker tarafından alınır.
+2. `TweetMediaService::downloadForTweet()` çağrılır.
+3. `raw_tweets.media_urls` içindeki URL'ler HTTP ile indirilir.
+4. Dosyalar `storage/app/media/tweets/{tweet_id}/` altına kaydedilir.
+5. `raw_tweets.media_paths` JSON dizisi olarak güncellenir.
+6. `raw_tweets.media_downloaded_at` zaman damgası kaydedilir.
+7. SystemLog'a `media_downloaded` olayı yazılır.
+
+**Hata toleransı:** Bir medya dosyasının indirilmesi başarısız olursa AI workflow durmaz. Sadece hata loglanır. Tweet metni AI'ya gönderilmeye devam eder. Publish aşamasında dosya yoksa sadece metin paylaşılır.
 
 ---
 
@@ -952,7 +1005,8 @@ Schedule::job(new PoolSelectionJob)->everyMinute()->withoutOverlapping();
 
 Ana seçim orchestrator'ı. Tüm iş mantığını barındırır:
 
-- `execute()`: Tam seçim akışını yürütür (adayları al, puanla, sırala, seç, işaretle, batch oluştur, logla, sonraki çalışma zamanını hesapla).
+- `execute()`: Tam seçim akışını yürütür (adayları al, puanla, sırala, seç, işaretle, batch oluştur, medya indirme job'larını dispatch, logla, sonraki çalışma zamanını hesapla).
+- Secim sonrasi: Eger `media_download_enabled = true` ise her secilen tweet icin `DownloadTweetMediaJob::dispatch($tweetId)` cagirir.
 - `executeSafe()`: `execute()`'i try-catch ile sarar. Başarısızlık durumunda failed batch kaydı oluşturur ve sonraki çalışma zamanını günceller.
 - Batch numarası üretimi: `B-{Ymd}-{seq}` formatında, günlük artan sıra numarası ile.
 - `scheduleNextRun()`: Rastgele bekleme süresi hesaplayıp `next_run_at` günceller.
@@ -974,6 +1028,15 @@ Admin paneldeki havuz ayarları güncelleme işini yürütür:
 - `update()`: Ayarları transaksiyon içinde günceller.
 - Normalizasyon: Minimum değerlerin maksimumlardan büyük olmamasını sağlar.
 
+### 7.4 TweetMediaService (`app/Services/NewsCollection/TweetMediaService.php`)
+
+Tweet medya yönetimi servisidir:
+
+- `extractMediaFromPayload()`: Python payload'indan `photo_urls`, `video_urls`, `animated_gif_urls` bilgilerini cikartir, `media_urls`, `media_count`, `media_type` dondurur.
+- `downloadForTweet()`: Tweet'in `media_urls` URL'lerini HTTP ile indirir, `storage/app/media/tweets/{tweet_id}/` altina kaydeder, `media_paths` ve `media_downloaded_at` gunceller.
+- `deleteMedia()`: Tweet'in medya dosyalarini fiziksel olarak siler, `media_paths` ve `media_downloaded_at` kayitlarini temizler.
+- `cleanupExpired()`: Retention kurallarina gore eskimiş medya dosyalarini temizler.
+
 ---
 
 ## 8. Admin Panel Sayfaları
@@ -987,6 +1050,9 @@ Tek sayfalık dinamik ayar formudur. Yeni ekleme veya silme yoktur; sadece mevcu
 - Seçim Çalışma Aralığı (minimum / maksimum dakika)
 - Seçilecek Tweet Sayısı (minimum / maksimum)
 - Havuz Seçimi Aktif/Pasif toggle
+- Medya İndirme Aktif/Pasif toggle
+- Yayınlanmış Medya Saklama Süresi (saat)
+- Yayınlanmamış Medya Saklama Süresi (saat)
 - Bir Sonraki Çalışma Zamanı (salt okunur bilgi)
 - Puanlama Algoritması açıklama kartı
 
@@ -1077,6 +1143,20 @@ Her seçim döngüsü `system_logs` tablosuna `pool_selection` modülü olarak l
 
 Ayrıca başarısızlık durumlarında `alerts` tablosuna `pool_selection_failed` tipinde bildirim kaydı oluşturulur.
 
+### 9.1 Medya Loglama
+
+Tweet medya işlemleri `system_logs` tablosuna `media_management` modülü olarak loglanır.
+
+**Olaylar:**
+- `media_downloaded`: Tüm medyalar başarıyla indirildi
+- `media_download_failed`: Bazı medyalar indirilemedi (hata devam eder)
+- `media_deleted`: Tweet medyaları temizlendi
+- `media_exists`: Medya zaten indirilmiş, tekrar indirilmedi
+- `cleanup_completed`: Toplu temizlik tamamlandı
+- `cleanup_failed`: Temizlik sırasında hata oluştu
+
+Ayrıca başarısızlık durumlarında `alerts` tablosuna `pool_selection_failed` tipinde bildirim kaydı oluşturulur.
+
 ---
 
 ## 10. Dosya Yapısı
@@ -1091,6 +1171,11 @@ database/migrations/
   2026_06_01_150002_create_pool_batches_table.php
   2026_06_01_150003_create_pool_batch_items_table.php
   2026_06_01_150004_add_pool_flags_to_raw_tweets_table.php
+  2026_06_04_000001_add_media_fields_to_raw_tweets_table.php
+  2026_06_04_000002_add_media_settings_to_pool_settings_table.php
+
+services/twscrape/
+  fetch_user_tweets.py (guncellendi: photo_urls, video_urls, animated_gif_urls)
 
 app/Models/
   PoolSetting.php
@@ -1100,12 +1185,15 @@ app/Models/
 app/Services/NewsCollection/
   PoolScoringService.php
   PoolSelectionService.php
+  TweetMediaService.php (yeni)
 
 app/Services/Admin/
   PoolSettingService.php
 
 app/Jobs/
   PoolSelectionJob.php
+  DownloadTweetMediaJob.php (yeni)
+  MediaCleanupJob.php (yeni)
 
 app/Http/Controllers/Admin/
   PoolSettingController.php
@@ -1131,9 +1219,12 @@ resources/views/admin/
 ### Güncellenen Dosyalar
 
 ```
-app/Models/RawTweet.php              (fillable ve casts güncellendi)
+app/Models/RawTweet.php              (fillable ve casts güncellendi: media alanları)
+app/Models/PoolSetting.php           (fillable ve casts güncellendi: media ayarları)
 routes/admin.php                     (pool route'ları eklendi)
-routes/console.php                   (PoolSelectionJob scheduler eklendi)
+routes/console.php                    (PoolSelectionJob + MediaCleanupJob scheduler)
+app/Services/NewsCollection/
+  TweetIngestionService.php           (medya metadata kaydetme eklendi)
 resources/views/admin/layouts/partials/sidebar.blade.php  (Havuz menüsü eklendi)
 ```
 
@@ -1317,6 +1408,7 @@ AI üretim sisteminin tüm konfigürasyonu bu sayfadan yönetilir. Tabloda tek k
 | Timeout | AI isteği için maksimum bekleme süresi saniye (varsayılan: 300) |
 | Eş Zamanlı Job Sayısı | Aynı anda çalışabilecek AI job sayısı (varsayılan: 1) |
 | AI Üretimini Aktif Et | Tüm AI üretimini açıp kapatır |
+| Otomatik Onay | AI üretimlerini otomatik onaylar (varsayılan: kapalı) |
 
 ### 4.2 OpenCode'a Özel Alanlar
 
@@ -1359,6 +1451,7 @@ AI ayarlarının tutulduğu tek kayıtlık tablo.
 | opencode_base_url | varchar nullable | OpenCode Base URL |
 | opencode_model | varchar nullable | OpenCode model adı |
 | is_active | boolean | AI üretimi aktif mi |
+| auto_approve | boolean default false | AI üretimlerini otomatik onaylar |
 | created_at, updated_at | timestamps | Zaman damgaları |
 
 ### 5.2 prompts
@@ -1417,6 +1510,7 @@ AI tarafından üretilen içeriklerin kaydı. Her kayıt bir tweet'e karşılık
 | token_usage | json nullable | Token bilgileri |
 | duration | int unsigned | İşlem süresi (milisaniye) |
 | status | varchar | Durum: draft / approved / rejected / published |
+| approved_at | timestamp nullable | Onay tarihi (admin veya sistem onayı) |
 | error | text nullable | Hata mesajı |
 | generated_at | timestamp nullable | Üretim zamanı |
 | created_at, updated_at | timestamps | Zaman damgaları |
@@ -1492,6 +1586,7 @@ Tek sayfalık konfigürasyon formu ve bağlantı testi.
 - OpenCode'a özel alanlar (API Key, Base URL, Model)
 - Genel ayarlar (retry, timeout, concurrent jobs)
 - Aktif prompt seçimi
+- Otomatik Onay toggle'ı (AI üretimlerini otomatik onaylama)
 - Bağlantı testi bölümü
 
 ### 7.2 Prompt Yönetimi (`/admin/prompts`)
@@ -1549,7 +1644,7 @@ AI tarafından üretilen içeriklerin listesi ve detayları. Her satır bir twee
 
 **Detay sayfası (`/admin/ai-generations/{id}`):**
 - **Kaynak Tweet:** Kullanıcı adı, tweet metni, etkileşim sayıları (like, RT, reply, view), tarih, kategori
-- **Üretim Bilgileri:** Provider, Model, Prompt Versiyonu, Süre, Durum, Üretim Tarihi, Batch linki
+- **Üretim Bilgileri:** Provider, Model, Prompt Versiyonu, Süre, Durum, Onay Tarihi, Üretim Tarihi, Batch linki
 - **Token Kullanımı:** Prompt tokens, completion tokens, total tokens
 - **Review butonları** (Onayla / Reddet / Yayınla)
 - **Prompt:** Ham prompt şablonu
@@ -1562,16 +1657,35 @@ AI tarafından üretilen içeriklerin listesi ve detayları. Her satır bir twee
 
 ## 8. Review (Onay) Akışı
 
-AI üretimi tamamlandığında `draft` durumunda oluşur. Admin panelinden manuel onay süreci başlar.
+AI üretimi tamamlandığında `draft` durumunda oluşur. Onay akışı `ai_settings.auto_approve` ayarına göre değişir.
 
-**Durum geçişleri:**
+### 8.1 auto_approve = false (Varsayılan)
+
+Admin panelinden manuel onay süreci başlar.
 
 ```
-draft → approved  (Onayla butonu)
+draft → approved  (Onayla butonu, approved_at = now())
 draft → rejected  (Reddet butonu)
-approved → rejected  (Reddet butonu)
+approved → rejected  (Reddet butonu, approved_at = null yapılır)
 approved → published  (Yayınla butonu)
 ```
+
+### 8.2 auto_approve = true
+
+AI üretimi tamamlandığında otomatik olarak `approved` durumuna geçer.
+
+```
+draft → approved  (Sistem tarafından otomatik, approved_at = now())
+```
+
+Admin hala:
+- **Reddet** yapabilir (`approved` → `rejected`, `approved_at` null yapılır)
+- **Yayınla** yapabilir (`approved` → `published`)
+
+Not:
+- Auto approve ile `approved` olan kayıtlar `published`'a geçmez, maksimum durum `approved`'dır.
+- Admin yetkisi korunur: auto approve yalnızca ilk onayı verir.
+- Publish workflow gelecekte `approved` → `published` geçişini engellemeden eklenebilir.
 
 Her geçiş `ai_generation_logs` tablosuna loglanır.
 
@@ -1606,6 +1720,8 @@ database/migrations/
   2026_06_02_100007_update_ai_settings_for_providers.php
   2026_06_02_100008_add_source_category_to_prompts.php
   2026_06_03_000001_drop_ai_generation_items_and_update_ai_generations.php
+  2026_06_03_100001_add_auto_approve_to_ai_settings.php
+  2026_06_03_100002_add_approved_at_to_ai_generations.php
 
 services/gpt4free/
   ai_generate.py
@@ -1671,17 +1787,24 @@ resources/views/admin/
 ### Güncellenen Dosyalar
 
 ```
-app/Models/RawTweet.php                  (aiGenerations ilişkisi eklendi)
+app/Models/RawTweet.php                  (aiGenerations ilişkisi eklendi, aiGenerationItems kaldırıldı)
 app/Models/AiQueue.php                   (generations hasMany ilişkisi)
-app/Models/AiGeneration.php              (rawTweet, sourceAccount, category ilişkileri; raw_tweet_id, provider kolonları)
-app/Services/NewsCollection/AIGenerationService.php  (tweet bazlı üretime geçildi)
+app/Models/AiGeneration.php              (rawTweet, sourceAccount, category ilişkileri; raw_tweet_id, provider, approved_at kolonları)
+app/Models/AiSetting.php                 (auto_approve fillable ve cast eklendi)
+app/Services/NewsCollection/AIGenerationService.php  (tweet bazlı üretime geçildi, auto_approve kontrolü eklendi)
+app/Services/NewsCollection/AIReviewService.php       (approve/reject approved_at yönetimi)
 app/Services/NewsCollection/PromptResolverService.php (resolveForTweet metodu eklendi)
+app/Services/Admin/AiSettingService.php               (normalize() auto_approve eklendi)
 app/Http/Controllers/Admin/AiGenerationController.php (show load ilişkileri güncellendi)
 app/Http/Controllers/Admin/AiQueueController.php      (show load ilişkileri güncellendi)
+app/Http/Controllers/Admin/RawTweetController.php     (aiGenerations ilişkisi güncellendi)
+app/Http/Requests/Admin/AiSetting/UpdateRequest.php   (auto_approve validasyonu eklendi)
 app/Queries/Admin/AiGenerationQuery.php               (tweet bazlı arama ve eager load)
+resources/views/admin/ai-settings/edit.blade.php      (auto_approve checkbox eklendi)
 resources/views/admin/ai-generations/index.blade.php  (tweet bazlı kolonlar)
-resources/views/admin/ai-generations/show.blade.php   (tweet bazlı detay)
+resources/views/admin/ai-generations/show.blade.php   (tweet bazlı detay, approved_at gösterimi)
 resources/views/admin/ai-queue/show.blade.php          (generations listesi)
+resources/views/admin/raw-tweets/show.blade.php       (aiGenerations ilişkisi düzeltildi)
 routes/admin.php                      (AI route'ları)
 routes/console.php                    (AIQueueJob scheduler)
 resources/views/admin/layouts/partials/sidebar.blade.php (AI menüsü)
@@ -1693,3 +1816,140 @@ config/news_collection.php            (gpt4free konfigürasyonu)
 ```
 app/Models/AiGenerationItem.php  (tablo düşürüldü, model kaldırıldı)
 ```
+
+---
+
+# Tweet Medya Yönetimi Sistemi
+
+Bu bölüm, tweet medya yönetiminin tam olarak nasıl çalıştığını detaylı olarak açıklar.
+
+## 1. Temel İlkeler
+
+- **Tweet çekiminde indirme yok**: Tweet çekilirken medya dosyaları indirilmez. Sadece URL metadata'sı toplanır.
+- **Sadece seçilenler indirilir**: Havuza seçilmeyen tweetlerin medyası asla indirilmez.
+- **AI medyayı görmez**: AI workflow sadece `{tweet_content}` placeholder'ını kullanır. Medya dosyaları AI'ya gönderilmez.
+- **Publish hazırlığı**: `media_paths` üzerinden `storage/app/media/tweets/{tweet_id}/` altındaki dosyalara doğrudan erişilebilir. Publish aşamasında tekrar indirme gerekmez.
+- **Hata toleransı**: Bir medya dosyasının indirilmesi başarısız olursa AI workflow durmaz. Sadece warning/error log atılır. Publish aşamasında dosya yoksa sadece metin paylaşılır.
+
+## 2. Akış Diyagramı
+
+```
+Tweet Fetch (Python)
+  └─ photo_urls, video_urls, animated_gif_urls, media_urls
+  └─ TweetIngestionService (medya metadata kaydedilir)
+  └─ raw_tweets: media_urls, media_count, media_type (indirilmez)
+
+Pool Selection (PoolSelectionService)
+  └─ Seçilen tweetler: DownloadTweetMediaJob::dispatch($tweetId)
+  └─ Seçilmeyen tweetler: işlem yapılmaz
+
+DownloadTweetMediaJob (Queue worker)
+  └─ TweetMediaService::downloadForTweet()
+  └─ HTTP ile indirme → storage/app/media/tweets/{id}/
+  └─ raw_tweets: media_paths, media_downloaded_at
+
+AI Workflow (AIGenerationService)
+  └─ Sadece tweet metni kullanılır
+  └─ {tweet_content} placeholder'ı doldurulur
+  └─ Medya dosyalarına dokunulmaz
+
+MediaCleanupJob (hourly scheduler)
+  └─ published_media_retention_hours kontrolü
+  └─ unpublished_media_retention_hours kontrolü
+  └─ Süresi dolan dosyalar fiziksel olarak silinir
+  └─ raw_tweets: media_paths = null, media_downloaded_at = null
+```
+
+## 3. Desteklenen Medya Türleri
+
+Python scripti üç tür medya destekler:
+
+| Tür | Açıklama | Örnek |
+|-----|----------|-------|
+| `photo` | Statik görseller | JPG, PNG, WebP, GIF |
+| `video` | Video dosyaları | MP4, WebM |
+| `animated_gif` | Animasyonlu GIF'ler | GIF (video olarak gelir) |
+| `mixed` | Birden fazla tür bir arada | 2 foto + 1 video |
+
+## 4. Medya İndirme Mechanizması
+
+### 4.1 İndirme Sırası
+
+1. Job Queue worker tarafından alınır.
+2. Tweet veritabanından çekilir.
+3. `media_urls` kontrol edilir — boşsa işlem yapılmaz.
+4. `media_paths` kontrol edilir — doluysa "zaten indirilmiş" logu atılır, atlanır.
+5. Her URL için:
+   - HTTP GET isteği gönderilir (30sn timeout).
+   - Content-Type header'ına göre uzantı belirlenir.
+   - Dosya `storage/app/media/tweets/{tweet_id}/{hash}.{ext}` olarak kaydedilir.
+6. Tüm başarılı yollar `media_paths` JSON dizisine kaydedilir.
+7. `media_downloaded_at` zaman damgası güncellenir.
+
+### 4.2 Dosya Yolu Formatı
+
+```
+storage/app/media/tweets/
+  {tweet_id}/
+    {md5_url_0}.jpg
+    {md5_url_1}.jpg
+    {md5_url_2}.mp4
+```
+
+URL hash'lenerek benzersiz dosya adı oluşturulur. Böylece aynı tweet yeniden indirilirse aynı dosya adı kullanılır.
+
+### 4.3 Hata Yönetimi
+
+- HTTP hatası: O URL atlanır, diğerlerine devam edilir. Hata listesi loglanır.
+- İndirilen dosya yoksa: O URL atlanır.
+- Tümü başarısız olursa: `media_downloaded_at` güncellenmez, hata loglanır.
+- Job başarısızlığı: `failed()` hook log atar, queue otomatik retry dener.
+
+## 5. Retention ve Cleanup
+
+### 5.1 Retention Süreleri
+
+| Ortam | Varsayılan | Açıklama |
+|-------|------------|----------|
+| Yayınlanmış (published) | 24 saat | Paylaşımdan sonra medya saklanma süresi |
+| Yayınlanmamış | 48 saat | Onaylanmış ama henüz paylaşılmamış |
+
+### 5.2 Cleanup Kriteri
+
+- **Published**: `ai_generations.status = 'published'` ve `approved_at + published_media_retention_hours < now()`
+- **Unpublished**: `ai_generations.status IN ('draft', 'approved', 'rejected')` ve `created_at + unpublished_media_retention_hours < now()`
+
+### 5.3 Cleanup İşlemi
+
+1. Yukarıdaki kriterlere göre `raw_tweet_id` listesi alınır.
+2. Her tweet için `media_paths` kontrol edilir.
+3. Dolu olanlar için fiziksel dosyalar `Storage::delete()` ile silinir.
+4. `media_paths = null`, `media_downloaded_at = null` güncellenir.
+5. `cleanup_completed` logu atılır (silinen sayısı ile).
+
+**Not:** Publish sistemi (`ai_generations.status = 'published'`) henüz aktif olmadığı için cleanup şu anda published medya silmez. Publish eklendiğinde otomatik olarak devreye girer.
+
+## 6. AI Context Sorularına Cevaplar
+
+### Soru 1: Tweet paylaşıldıktan sonra medya siliniyor mu?
+
+**Şu an hayır.** Mevcut sistemde `ai_generations.status = 'published'` durumu oluşmadığı için published retention mekanizması tetiklenmez. Publish sistemi eklendiğinde `approved_at + published_media_retention_hours` süresi dolan medyalar `MediaCleanupJob` tarafından silinecektir.
+
+Varsayılan published retention süresi: **24 saat**.
+
+### Soru 2: Havuzda seçilmeyen tweetlerin medyası indirilmiyor mu?
+
+**Evet, doğru.** Havuza seçilmeyen tweetlerin sadece metadata'sı (`media_urls`) veritabanında durur, fiziksel dosya indirilmez. Seçim anında sadece `is_selected = true` olan tweetler için `DownloadTweetMediaJob` dispatch edilir. Seçilmeyen tweetler `is_selected = false` olarak kalır ve medya indirme tetiklenmez.
+
+## 7. ai_generations.status Yapısı — Değişiklik Yapıldı mı?
+
+**Hayır, değişiklik yapılmadı.** Bugünkü medya yönetimi implementasyonunda `ai_generations.status` sütunu hiç dokunulmadı. Mevcut durum aynen korundu:
+
+| Durum | Açıklama |
+|-------|----------|
+| `draft` | AI tarafından üretildi, onay bekliyor |
+| `approved` | Admin veya auto_approve ile onaylandı |
+| `rejected` | Admin tarafından reddedildi |
+| `published` | (Şu an oluşmuyor) Paylaşıldı — publish sistemi henüz yok |
+
+Bu dört durumun dışında başka bir durum eklenmedi. Medya cleanup sistemi `status = 'published'` bekliyor ancak bu durum publish sistemi eklendiğinde oluşacak. Şu an için cleanup `published` durumundaki kayıt bulamaz ve işlem yapmaz.

@@ -88,37 +88,40 @@ class Gpt4freeClient
     {
         $env = [];
 
-        foreach ($_SERVER as $key => $value) {
-            if (is_string($value)) {
+        // Only forward a whitelist of environment variables to the subprocess.
+        // Forwarding the entire $_SERVER array (web server variables like
+        // REQUEST_METHOD, SCRIPT_NAME, REDIRECT_STATUS, etc.) pollutes the
+        // Python environment and can break native modules (e.g. wasmtime
+        // architecture detection) or async I/O on Windows.
+        $whitelist = [
+            'PATH', 'HOME', 'USERPROFILE', 'SYSTEMROOT', 'WINDIR',
+            'TMP', 'TEMP', 'APPDATA', 'LOCALAPPDATA', 'HOMEDRIVE', 'HOMEPATH',
+            'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
+            'NUMBER_OF_PROCESSORS', 'OS', 'COMPUTERNAME',
+            'PYTHONIOENCODING', 'PYTHONUNBUFFERED', 'PYTHONPATH',
+        ];
+
+        foreach ($whitelist as $key) {
+            $value = getenv($key);
+            if ($value !== false && $value !== '') {
                 $env[$key] = $value;
             }
-        }
-
-        foreach ($_ENV as $key => $value) {
-            if (is_string($value)) {
-                $env[$key] = $value;
-            }
-        }
-
-        $path = getenv('PATH');
-
-        if ($path !== false && $path !== '') {
-            $env['PATH'] = $path;
-        }
-
-        $home = getenv('HOME');
-
-        if ($home !== false && $home !== '') {
-            $env['HOME'] = $home;
-        }
-
-        $userProfile = getenv('USERPROFILE');
-
-        if ($userProfile !== false && $userProfile !== '') {
-            $env['USERPROFILE'] = $userProfile;
         }
 
         $env['PYTHONIOENCODING'] = 'utf-8';
+        $env['PYTHONUNBUFFERED'] = '1';
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            $systemRoot = $env['SYSTEMROOT'] ?? $env['WINDIR'] ?? 'C:\\Windows';
+            $env['SYSTEMROOT'] = $systemRoot;
+            $env['WINDIR'] = $env['WINDIR'] ?? $systemRoot;
+        }
+
+        if (empty($env['PATH'])) {
+            $env['PATH'] = PHP_OS_FAMILY === 'Windows'
+                ? 'C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem'
+                : '/usr/local/bin:/usr/bin:/bin';
+        }
 
         return $env;
     }
@@ -143,15 +146,20 @@ class Gpt4freeClient
     private function pythonPath(string $scriptDir): string
     {
         $configured = (string) config('news_collection.gpt4free.python_path', 'python');
-        $localVenv = $scriptDir . DIRECTORY_SEPARATOR . '.venv' . DIRECTORY_SEPARATOR . 'Scripts' . DIRECTORY_SEPARATOR . 'python.exe';
 
-        if (($configured === '' || $configured === 'python') && file_exists($localVenv)) {
-            return $localVenv;
+        if ($configured !== '' && $configured !== 'python') {
+            return $configured;
         }
 
-        $localVenvUnix = $scriptDir . DIRECTORY_SEPARATOR . '.venv' . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'python';
+        $venvDir = (string) config('news_collection.gpt4free.venv_dir', '.venv');
+        $localVenvWin = $scriptDir . DIRECTORY_SEPARATOR . $venvDir . DIRECTORY_SEPARATOR . 'Scripts' . DIRECTORY_SEPARATOR . 'python.exe';
+        $localVenvUnix = $scriptDir . DIRECTORY_SEPARATOR . $venvDir . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'python';
 
-        if (($configured === '' || $configured === 'python') && file_exists($localVenvUnix)) {
+        if (PHP_OS_FAMILY === 'Windows' && file_exists($localVenvWin)) {
+            return $localVenvWin;
+        }
+
+        if (PHP_OS_FAMILY !== 'Windows' && file_exists($localVenvUnix)) {
             return $localVenvUnix;
         }
 
