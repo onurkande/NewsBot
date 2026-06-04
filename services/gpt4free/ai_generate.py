@@ -51,6 +51,18 @@ if "PATH" not in os.environ:
 # Unbuffered stdout so PHP can read JSON output immediately
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 
+# Preemptive fix: g4f eagerly imports all providers, including DeepSeekAPI which
+# requires the 'wasmtime' native module. On some Windows architectures (or when
+# launched from a web server with a stripped environment), wasmtime fails with
+# "unsupported architecture". Since we don't use DeepSeekAPI, we stub it out
+# to prevent the entire import chain from crashing.
+import types
+if 'wasmtime' not in sys.modules:
+    _wasmtime_stub = types.ModuleType('wasmtime')
+    _wasmtime_stub._ffi = types.ModuleType('wasmtime._ffi')
+    sys.modules['wasmtime'] = _wasmtime_stub
+    sys.modules['wasmtime._ffi'] = _wasmtime_stub._ffi
+
 try:
     import g4f
     from g4f.client import Client
@@ -91,64 +103,87 @@ def get_provider_by_name(name):
     return getattr(g4f.Provider, name, None)
 
 
+def is_valid_provider(obj):
+    """Verify that the loaded attribute is actually a usable provider class."""
+    if not isinstance(obj, type):
+        return False
+    try:
+        from g4f.Provider.base_provider import BaseProvider
+        return issubclass(obj, BaseProvider) and obj is not BaseProvider
+    except Exception:
+        # Fallback if base_provider structure changes
+        return hasattr(obj, 'create_completion') or hasattr(obj, 'create_async_generator')
+
+
 def generate(prompt_text, preferred_model=None):
     """
     AI'dan yanit uretir. Belirtilen model calismazsa havuzdaki sirayla dener.
     Basarili olursa dict dondurur, basarisiz olursa hata dict'i dondurur.
     """
     client = Client()
-    pool = load_provider_pool()
+    try:
+        pool = load_provider_pool()
 
-    target_providers = []
-    tried_providers = []
+        def _pool_providers(names):
+            providers = []
+            for n in names:
+                p = get_provider_by_name(n)
+                if p and is_valid_provider(p):
+                    providers.append(p)
+            return providers
 
-    if preferred_model:
-        p = get_provider_by_name(preferred_model)
-        if p:
-            target_providers = [p]
+        target_providers = []
+        tried_providers = []
+
+        if preferred_model:
+            p = get_provider_by_name(preferred_model)
+            if p and is_valid_provider(p):
+                target_providers = [p]
+            else:
+                target_providers = _pool_providers(pool)
         else:
-            # Belirtilen model bulunamadi, havuza don
-            target_providers = [get_provider_by_name(n) for n in pool if get_provider_by_name(n)]
-    else:
-        target_providers = [get_provider_by_name(n) for n in pool if get_provider_by_name(n)]
+            target_providers = _pool_providers(pool)
 
-    if not target_providers:
-        return {
-            "success": False,
-            "error": "Havuzda calisabilir hicbir provider bulunamadi.",
-            "tried_providers": [],
-        }
-
-    for p in target_providers:
-        provider_name = p.__name__ if hasattr(p, '__name__') else str(p)
-        tried_providers.append(provider_name)
-
-        try:
-            response = client.chat.completions.create(
-                model="",
-                provider=p,
-                messages=[{"role": "user", "content": prompt_text}],
-            )
-
-            content = response.choices[0].message.content if response.choices else ""
-            model_used = response.model or "varsayilan"
-
+        if not target_providers:
             return {
-                "success": True,
-                "provider": provider_name,
-                "model": model_used,
-                "content": content,
+                "success": False,
+                "error": "Havuzda calisabilir hicbir provider bulunamadi.",
+                "tried_providers": [],
             }
 
-        except Exception as e:
-            # Bu provider calismadi, siradakine gec
-            continue
+        for p in target_providers:
+            provider_name = p.__name__ if hasattr(p, '__name__') else str(p)
+            tried_providers.append(provider_name)
 
-    return {
-        "success": False,
-        "error": f"Havuzdaki {len(tried_providers)} provider denendi, hicbirinden yanit alinamadi.",
-        "tried_providers": tried_providers,
-    }
+            try:
+                response = client.chat.completions.create(
+                    model="",
+                    provider=p,
+                    messages=[{"role": "user", "content": prompt_text}],
+                )
+
+                content = response.choices[0].message.content if response.choices else ""
+                model_used = response.model or "varsayilan"
+
+                return {
+                    "success": True,
+                    "provider": provider_name,
+                    "model": model_used,
+                    "content": content,
+                }
+
+            except Exception:
+                # Bu provider calismadi, siradakine gec
+                continue
+
+        return {
+            "success": False,
+            "error": f"Havuzdaki {len(tried_providers)} provider denendi, hicbirinden yanit alinamadi.",
+            "tried_providers": tried_providers,
+        }
+    finally:
+        if hasattr(client, 'close'):
+            client.close()
 
 
 def main():

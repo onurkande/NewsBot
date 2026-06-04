@@ -17,6 +17,7 @@ return [
 
     'gpt4free' => [
         'python_path' => env('GPT4FREE_PYTHON_PATH') ?: 'python',
+        'venv_dir' => env('GPT4FREE_VENV_DIR') ?: '.venv',
         'script_dir' => env('GPT4FREE_SCRIPT_DIR') ?: base_path('services/gpt4free'),
         'generate_script' => env('GPT4FREE_GENERATE_SCRIPT') ?: 'ai_generate.py',
         'provider_pool' => env('GPT4FREE_PROVIDER_POOL') ?: 'havuz',
