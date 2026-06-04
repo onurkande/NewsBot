@@ -22,5 +22,8 @@ return [
         'generate_script' => env('GPT4FREE_GENERATE_SCRIPT') ?: 'ai_generate.py',
         'provider_pool' => env('GPT4FREE_PROVIDER_POOL') ?: 'havuz',
         'timeout' => (int) env('GPT4FREE_TIMEOUT', 120),
+
+        // EKLE
+        'home' => env('GPT4FREE_HOME'),
     ],
 ];
