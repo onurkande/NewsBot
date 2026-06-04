@@ -88,21 +88,32 @@ class Gpt4freeClient
     {
         $env = [];
 
-        // Only forward a whitelist of environment variables to the subprocess.
-        // Forwarding the entire $_SERVER array (web server variables like
-        // REQUEST_METHOD, SCRIPT_NAME, REDIRECT_STATUS, etc.) pollutes the
-        // Python environment and can break native modules (e.g. wasmtime
-        // architecture detection) or async I/O on Windows.
         $whitelist = [
-            'PATH', 'HOME', 'USERPROFILE', 'SYSTEMROOT', 'WINDIR',
-            'TMP', 'TEMP', 'APPDATA', 'LOCALAPPDATA', 'HOMEDRIVE', 'HOMEPATH',
-            'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
-            'NUMBER_OF_PROCESSORS', 'OS', 'COMPUTERNAME',
-            'PYTHONIOENCODING', 'PYTHONUNBUFFERED', 'PYTHONPATH',
+            'PATH',
+            'HOME',
+            'USERPROFILE',
+            'SYSTEMROOT',
+            'WINDIR',
+            'TMP',
+            'TEMP',
+            'APPDATA',
+            'LOCALAPPDATA',
+            'HOMEDRIVE',
+            'HOMEPATH',
+            'PROCESSOR_ARCHITECTURE',
+            'PROCESSOR_IDENTIFIER',
+            'PROCESSOR_LEVEL',
+            'NUMBER_OF_PROCESSORS',
+            'OS',
+            'COMPUTERNAME',
+            'PYTHONIOENCODING',
+            'PYTHONUNBUFFERED',
+            'PYTHONPATH',
         ];
 
         foreach ($whitelist as $key) {
             $value = getenv($key);
+
             if ($value !== false && $value !== '') {
                 $env[$key] = $value;
             }
@@ -113,6 +124,7 @@ class Gpt4freeClient
 
         if (PHP_OS_FAMILY === 'Windows') {
             $systemRoot = $env['SYSTEMROOT'] ?? $env['WINDIR'] ?? 'C:\\Windows';
+
             $env['SYSTEMROOT'] = $systemRoot;
             $env['WINDIR'] = $env['WINDIR'] ?? $systemRoot;
         }
@@ -121,6 +133,15 @@ class Gpt4freeClient
             $env['PATH'] = PHP_OS_FAMILY === 'Windows'
                 ? 'C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem'
                 : '/usr/local/bin:/usr/bin:/bin';
+        }
+
+        // GPT4Free HOME override
+        $gptHome = (string) config('news_collection.gpt4free.home');
+
+        if ($gptHome !== '') {
+            $env['HOME'] = $gptHome;
+            $env['XDG_CACHE_HOME'] = $gptHome.'/.cache';
+            $env['XDG_CONFIG_HOME'] = $gptHome.'/.config';
         }
 
         return $env;
