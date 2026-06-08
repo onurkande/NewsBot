@@ -82,8 +82,26 @@
             <div>
                 <div style="color: var(--t-muted); font-size: 12px;">Durum</div>
                 @php
-                    $statusTag = match($generation->status) {'draft' => 't-unavail', 'approved' => 't-info', 'rejected' => 't-danger', 'published' => 't-active', default => 't-unavail'};
-                    $statusLabel = match($generation->status) {'draft' => 'Taslak', 'approved' => 'Onaylandi', 'rejected' => 'Reddedildi', 'published' => 'Yayinlandi', default => $generation->status};
+                    $statusTag = match($generation->status) {
+                        'draft' => 't-unavail',
+                        'approved' => 't-info',
+                        'rejected' => 't-danger',
+                        'publishing' => 't-warning',
+                        'published' => 't-active',
+                        'publish_failed' => 't-danger',
+                        'expired' => 't-unavail',
+                        default => 't-unavail',
+                    };
+                    $statusLabel = match($generation->status) {
+                        'draft' => 'Taslak',
+                        'approved' => 'Onaylandi',
+                        'rejected' => 'Reddedildi',
+                        'publishing' => 'Yayinlaniyor',
+                        'published' => 'Yayinlandi',
+                        'publish_failed' => 'Yayin Basarisiz',
+                        'expired' => 'Suresi Doldu',
+                        default => $generation->status,
+                    };
                 @endphp
                 <span class="tag {{ $statusTag }}">{{ $statusLabel }}</span>
             </div>
@@ -115,7 +133,7 @@
         @endif
     </x-admin.card>
 
-    @if ($generation->status === 'draft' || $generation->status === 'approved')
+    @if ($generation->status === 'draft' || $generation->status === 'approved' || $generation->status === 'publish_failed')
         <x-admin.card eyebrow="Review" title="Durum Yonetimi" style="margin-top: 24px;">
             <div style="display: flex; gap: 12px;">
                 @if ($generation->status === 'draft')
@@ -134,7 +152,7 @@
                         Reddet
                     </x-admin.button>
                 </form>
-                @if ($generation->status === 'approved')
+                @if ($generation->status === 'approved' || $generation->status === 'publish_failed')
                     <form method="POST" action="{{ route('admin.ai-generations.publish', $generation) }}">
                         @csrf
                         <x-admin.button variant="primary" type="submit">

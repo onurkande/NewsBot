@@ -32,6 +32,8 @@ class AiSettingService
             'active_prompt_id' => Arr::get($data, 'active_prompt_id'),
             'is_active' => (bool) Arr::get($data, 'is_active', false),
             'auto_approve' => (bool) Arr::get($data, 'auto_approve', false),
+            'auto_publish' => (bool) Arr::get($data, 'auto_publish', false),
+            'publish_delay' => max(0, (int) Arr::get($data, 'publish_delay', 0)),
         ];
 
         if (($data['provider'] ?? '') === 'opencode') {

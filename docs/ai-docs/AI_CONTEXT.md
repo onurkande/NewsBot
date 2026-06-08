@@ -37,14 +37,18 @@ Backend:
 Yardımcı Servis:
 - Python 3.11
 
-Tweet Toplama:
-- twscrape
+Veri Toplama (twscrape):
+- Tweet çekme
+- Profil bilgisi çekme
+- Takipçi bilgisi çekme
+- Tweet istatistikleri çekme
 
 AI:
 - gpt4free (değiştirilebilir mimari)
 
-Paylaşım:
-- twitter-api-client
+Yayınlama (twitter-api-client):
+- Tweet paylaşma
+- Like / Retweet / Reply / Follow
 
 Queue:
 - Laravel Queue
@@ -237,8 +241,10 @@ FetchSourceAccountTweets
 PoolSelectionJob
 GenerateAiContentJob
 PublishPostJob
+PublishSchedulerJob
 DownloadTweetMediaJob
 MediaCleanupJob
+SyncPublishAccountJob
 
 Uzun işlemler Controller içerisinde çalıştırılmaz.
 
@@ -255,6 +261,8 @@ Zamanı gelen işleri Queue'ya bırakır.
 news:fetch-due-sources
 
 PoolSelectionJob
+AIQueueJob
+PublishSchedulerJob
 
 Scheduler doğrudan ağır işlem yapmaz.
 
@@ -296,6 +304,9 @@ Tamamlanan:
 - Duplicate kontrol sistemi
 - Tweet seçim havuzu sistemi
 - Tweet medya yönetimi sistemi
+- AI içerik üretim sistemi
+- Publish yönetimi sistemi (kuyruk tabanlı, çoklu hesap destekli)
+- Publish scheduler sistemi (rate limit, gece modu, warmup)
 
 ---
 
@@ -671,6 +682,60 @@ Havuz Geçmişi
 
 ---
 
+AI Ayarlari
+
+/admin/ai-settings
+
+---
+
+AI Kuyrugu
+
+/admin/ai-queue
+
+---
+
+AI Uretimleri
+
+/admin/ai-generations
+
+---
+
+Prompt Yonetimi
+
+/admin/prompts
+
+---
+
+Yayin Ayarlari
+
+/admin/publish-settings
+
+---
+
+Yayin Testi
+
+/admin/publish-test
+
+---
+
+Yayin Hesaplari
+
+/admin/publish-accounts
+
+---
+
+Yayin Kuyrugu
+
+/admin/publish-queue
+
+---
+
+Yayin Gecmisi
+
+/admin/publish-history
+
+---
+
 # Geliştirme Kuralları
 
 Yeni geliştirme yaparken:
@@ -733,6 +798,7 @@ Not:
 - Published durumuna geçmez, maksimum durum `approved`'ır.
 - Admin yetkisi korunur: auto approve ile onaylanan kayıtlar admin tarafından reddedilebilir.
 - Auto approve yalnızca ilk onayı (draft → approved) verir.
+- Auto publish aktifse approved → publish_queue otomatik olarak planlanır.
 
 Her adımda detaylı loglama yapılır.
 
@@ -833,17 +899,42 @@ NewsCollection:
 
 ## Review Durumları
 
-draft → approved → published
+draft → approved → publishing → published
 draft → rejected
 approved → rejected
+approved → publish_failed
+publish_failed → approved (retry)
 
-Auto Approve ile draft → approved otomatik olarak yapılır (approved_at = now()). Published'a geçiş yapılmaz.
+Auto Approve ile draft → approved otomatik olarak yapılır (approved_at = now()). Auto Publish ile approved → publish_queue otomatik olarak planlanır.
+
+## Publish Akışı
+
+Onaylanan (approved) içerikler PublishSchedulerService tarafından publish_queue'ya alınır.
+
+```
+approved → PublishSchedulerService → Kurallar Kontrolü → publish_queue
+                                                              ↓
+                                                    PublishPostJob
+                                                              ↓
+                                                           published
+```
+
+Kurallar:
+- Günlük paylasim limiti
+- Saatlik paylasim limiti
+- Minimum gap suresi
+- Random delay (min/max)
+- Gece modu (baslangic/bitis saati)
+- Warmup mode (hesap yasina gore limit)
+
+Scheduler: PublishSchedulerJob her dakika calisir, pending ve zamani gelmis kayitlari PublishPostJob ile dispatch eder.
 
 ## Scheduler
 
 routes/console.php:
 
 Schedule::job(new AIQueueJob)->everyMinute()->withoutOverlapping();
+Schedule::job(new PublishSchedulerJob)->everyMinute()->withoutOverlapping();
 
 ## GPT4Free Python Entegrasyonu
 
@@ -868,3 +959,103 @@ Base URL: https://opencode.ai/zen/go/v1
 Laravel tarafı: OpenCodeProvider (GuzzleHttp ile POST, Bearer auth).
 
 Admin panelden API key, base URL ve model değiştirilebilir.
+
+---
+
+# Publish Sistemi
+
+AI tarafından üretilen haberleri medya desteğiyle paylaşabilen, kuyruk tabanlı çalışan, çoklu hesap desteğine hazırlı, loglanabilir ve ileride farklı platformlara genişletilebilecek profesyonel bir yayın sistemidir.
+
+## Mimari Ayrım
+
+- twscrape: Veri toplama (tweet çekme, profil bilgisi çekme, istatistik)
+- twitter-api-client: Yayınlama (tweet paylaşma, like, retweet, reply, follow)
+
+## Publish Akışı
+
+```
+AI Generation (approved)
+    ↓
+PublishSchedulerService
+    ↓ Kurallar kontrolü:
+    ↓ - Günlük limit
+    ↓ - Saatlik limit
+    ↓ - Gece modu
+    ↓ - Minimum gap
+    ↓ - Random delay
+    ↓ - Warmup mode
+publish_queue (pending, scheduled_at ile)
+    ↓ Her dakika PublishSchedulerJob
+    ↓
+PublishPostJob
+    ↓ PublishService (Python script çalıştırır)
+    ↓
+published
+```
+
+## Publish Scheduler Kuralları
+
+- daily_post_limit: Günlük paylaşım limiti (varsayılan: 10)
+- hourly_post_limit: Saatlik paylaşım limiti (varsayılan: 1)
+- min_delay_minutes / max_delay_minutes: Random gecikme (45-90 dk)
+- min_gap_minutes: İki paylaşım arası minimum süre (3 dk)
+- publish_start_hour / publish_end_hour: Gece modu (08-23)
+- warmup_mode_enabled: Yeni hesap koruma sistemi (0-30 gün: 3, 30-60: 5, 60+: 10)
+- auto_publish_enabled: Otomatik yayını aktif/pasif
+
+## Tablolar
+
+- publish_settings (singleton, ayarlar)
+- publish_accounts (X hesapları, cookie yönetimi, warmup için account_created_at)
+- publish_queue (yayın kuyruğu: pending, processing, published, failed)
+- publish_logs (yayın geçmişi: tweet_id_x, duration, error_message)
+
+## Service Katmanı
+
+Admin:
+- PublishSettingsService (ayar güncelleme)
+- PublishAccountService (CRUD, profil güncelleme)
+- PublishQueueService (markProcessing, markPublished, markFailed, retry)
+- PublishSchedulerService (kurallar kontrolü, publish_queue oluşturma, pending dispatch)
+
+NewsCollection:
+- PublishService (Python script çalıştırır, JSON I/O, timeout, hata yönetimi)
+
+## Job Katmanı
+
+- PublishSchedulerJob: Her dakika pending ve zamani gelmis kayitlari dispatch eder
+- PublishPostJob: PublishService üzerinden tweet paylasir
+- SyncPublishAccountJob: Hesap profil bilgilerini günceller
+
+## Python Entegrasyonu
+
+Script: services/twitter-api-client/publish_tweet.py
+
+- JSON payload: {text, media_paths, cookies}
+- auth_token ve ct0 publish_accounts tablosundan alınır
+- Mevcut medya dosyaları storage'dan kullanılır, tekrar indirilmez
+- Çıktı JSON formatında stdout'a yazılır
+
+Laravel tarafı: PublishService (Symfony Process ile çalıştırır, payload dosyası oluşturur/temizler, stdout parse, timeout, Windows env fix).
+
+## Admin Sayfaları
+
+/admin/publish-settings → Yayın ayarları (limitler, gecikme, warmup)
+/admin/publish-test → Manuel test paylaşımı
+/admin/publish-accounts → X hesap yönetimi
+/admin/publish-queue → Yayın kuyruğu (pending, processing, published, failed)
+/admin/publish-history → Yayın geçmişi
+
+## Loglama
+
+SystemLog module = 'publish_scheduler':
+- Publish Scheduler çalıştı
+- Limit nedeniyle ertelendi
+- Saatlik limite takıldı
+- Günlük limite takıldı
+- Gece moduna takıldı
+- Publish Queue'ya alındı
+- Publish başladı
+- Publish başarılı
+- Publish başarısız
+- Retry çalıştı

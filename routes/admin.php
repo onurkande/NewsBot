@@ -83,6 +83,25 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('ai-generations/{aiGeneration}/reject', [AiGenerationController::class, 'reject'])->name('ai-generations.reject');
     Route::post('ai-generations/{aiGeneration}/publish', [AiGenerationController::class, 'publish'])->name('ai-generations.publish');
 
+    // Yayin Yonetimi
+    Route::get('publish-settings', [\App\Http\Controllers\Admin\PublishSettingsController::class, 'edit'])->name('publish-settings.edit');
+    Route::put('publish-settings', [\App\Http\Controllers\Admin\PublishSettingsController::class, 'update'])->name('publish-settings.update');
+
+    Route::get('publish-test', [\App\Http\Controllers\Admin\PublishTestController::class, 'index'])->name('publish-test.index');
+    Route::post('publish-test', [\App\Http\Controllers\Admin\PublishTestController::class, 'store'])->name('publish-test.store');
+
+    Route::resource('publish-accounts', \App\Http\Controllers\Admin\PublishAccountController::class)->except('show');
+    Route::delete('publish-accounts/bulk-destroy', [\App\Http\Controllers\Admin\PublishAccountController::class, 'bulkDestroy'])
+        ->name('publish-accounts.bulk-destroy');
+    Route::post('publish-accounts/{publishAccount}/sync', [\App\Http\Controllers\Admin\PublishAccountController::class, 'sync'])
+        ->name('publish-accounts.sync');
+
+    Route::get('publish-queue', [\App\Http\Controllers\Admin\PublishQueueController::class, 'index'])->name('publish-queue.index');
+    Route::get('publish-queue/{publishQueue}', [\App\Http\Controllers\Admin\PublishQueueController::class, 'show'])->name('publish-queue.show');
+    Route::post('publish-queue/{publishQueue}/retry', [\App\Http\Controllers\Admin\PublishQueueController::class, 'retry'])->name('publish-queue.retry');
+
+    Route::get('publish-history', [\App\Http\Controllers\Admin\PublishHistoryController::class, 'index'])->name('publish-history.index');
+
     // Twscrape Yönetimi
     Route::prefix('twscrape')->name('twscrape.')->group(function () {
         Route::get('accounts', [\App\Http\Controllers\Admin\Twscrape\TwscrapeAccountController::class, 'index'])->name('accounts.index');
@@ -98,5 +117,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::get('health', [\App\Http\Controllers\Admin\Twscrape\TwscrapeHealthController::class, 'index'])->name('health.index');
         
         Route::get('logs', [\App\Http\Controllers\Admin\Twscrape\TwscrapeLogController::class, 'index'])->name('logs.index');
+
+        Route::get('tweet-test', [\App\Http\Controllers\Admin\Twscrape\TwscrapeTweetTestController::class, 'index'])->name('tweet-test.index');
+        Route::post('tweet-test', [\App\Http\Controllers\Admin\Twscrape\TwscrapeTweetTestController::class, 'fetch'])->name('tweet-test.fetch');
     });
 });

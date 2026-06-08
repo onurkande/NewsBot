@@ -22,8 +22,13 @@ return [
         'generate_script' => env('GPT4FREE_GENERATE_SCRIPT') ?: 'ai_generate.py',
         'provider_pool' => env('GPT4FREE_PROVIDER_POOL') ?: 'havuz',
         'timeout' => (int) env('GPT4FREE_TIMEOUT', 120),
-
-        // EKLE
         'home' => env('GPT4FREE_HOME'),
+    ],
+
+    'twitter_api_client' => [
+        'python_path' => env('TWITTER_API_CLIENT_PYTHON_PATH') ?: 'python',
+        'script_dir' => env('TWITTER_API_CLIENT_SCRIPT_DIR') ?: base_path('services/twitter-api-client'),
+        'publish_script' => env('TWITTER_API_CLIENT_PUBLISH_SCRIPT') ?: 'publish_tweet.py',
+        'timeout' => (int) env('TWITTER_API_CLIENT_TIMEOUT', 120),
     ],
 ];

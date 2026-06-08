@@ -25,6 +25,8 @@ class UpdateRequest extends FormRequest
             'opencode_model' => ['nullable', 'string'],
             'is_active' => ['sometimes', 'boolean'],
             'auto_approve' => ['sometimes', 'boolean'],
+            'auto_publish' => ['sometimes', 'boolean'],
+            'publish_delay' => ['sometimes', 'integer', 'min:0', 'max:1440'],
         ];
     }
 }

@@ -103,6 +103,15 @@ Yayınlama sistemi:
 * Başarısız paylaşımı loglar
 * Hata durumunda retry uygular
 * Gerekirse yöneticiye bildirim gönderir
+* Günlük ve saatlik limit kontrolü yapar
+* Gece modunda paylaşım yapmaz
+* Warmup mode ile yeni hesapları korur
+* Random gecikme ile doğal davranış sağlar
+* Çoklu hesap desteği sunar
+
+**Kütüphane Ayrımı:**
+- twscrape: Sadece veri toplama (tweet çekme, profil bilgisi çekme, istatistik)
+- twitter-api-client: Sadece yayınlama (tweet paylaşma, like, retweet, reply, follow)
 
 ---
 
@@ -317,17 +326,30 @@ Laravel Queue kullanılacaktır.
 
 Örnek joblar:
 
-* FetchPostsJob
-* AnalyzePostsJob
-* CalculateScoresJob
-* GenerateAiContentJob
+* FetchSourceAccountTweets
+* FetchSourceAccountTweets
+* PoolSelectionJob
+* AIQueueJob
+* AIGenerationJob
 * PublishPostJob
-* HealthCheckJob
-* SendAlertJob
+* PublishSchedulerJob
+* SyncPublishAccountJob
 * DownloadTweetMediaJob
 * MediaCleanupJob
+* HealthCheckJob
+* SendAlertJob
 
 Scheduler düzenli olarak bu jobları çalıştıracaktır.
+
+**Scheduler tanımları (routes/console.php):**
+
+```php
+Schedule::command('news:fetch-due-sources')->everyMinute()->withoutOverlapping();
+Schedule::job(new PoolSelectionJob)->everyMinute()->withoutOverlapping();
+Schedule::job(new AIQueueJob)->everyMinute()->withoutOverlapping();
+Schedule::job(new MediaCleanupJob)->hourly()->withoutOverlapping();
+Schedule::job(new PublishSchedulerJob)->everyMinute()->withoutOverlapping();
+```
 
 ---
 
@@ -499,18 +521,19 @@ Sistem istatistikleri tutulacaktır.
 * gpt4free test edildi
 * twscrape test edildi
 * twitter-api-client test edildi
+* Tweet toplama sistemi tamamlandı
+* Tweet medya yönetimi tamamlandı
+* Tweet seçim havuzu sistemi tamamlandı
+* AI içerik üretim sistemi tamamlandı
+* Publish yönetimi sistemi tamamlandı
 
 Şu anda kalan temel aşamalar:
 
-* Laravel ile Python entegrasyonu
-* Queue sistemi
 * Monitoring sistemi
-* Log sistemi
-* Mail sistemi
+* Log sistemi geliştirmeleri
 * Paket health check sistemi
-* AI workflow sistemi
-* Yayın workflow sistemi
 * Dashboard geliştirmeleri
+* Gelecek planları (Instagram, çoklu dil, trend tespit vb.)
 
 ---
 
@@ -1667,7 +1690,8 @@ Admin panelinden manuel onay süreci başlar.
 draft → approved  (Onayla butonu, approved_at = now())
 draft → rejected  (Reddet butonu)
 approved → rejected  (Reddet butonu, approved_at = null yapılır)
-approved → published  (Yayınla butonu)
+approved → publish_queue  (Yayınla butonu, PublishSchedulerService aracılığıyla)
+publish_failed → publish_queue  (Yeniden Yayınla butonu)
 ```
 
 ### 8.2 auto_approve = true
@@ -1680,18 +1704,82 @@ draft → approved  (Sistem tarafından otomatik, approved_at = now())
 
 Admin hala:
 - **Reddet** yapabilir (`approved` → `rejected`, `approved_at` null yapılır)
-- **Yayınla** yapabilir (`approved` → `published`)
+- **Yayınla** yapabilir (`approved` → `publish_queue`)
 
 Not:
 - Auto approve ile `approved` olan kayıtlar `published`'a geçmez, maksimum durum `approved`'dır.
 - Admin yetkisi korunur: auto approve yalnızca ilk onayı verir.
-- Publish workflow gelecekte `approved` → `published` geçişini engellemeden eklenebilir.
+- `auto_publish_enabled = true` ise approved → publish_queue otomatik olarak planlanır.
+
+### 8.3 Yeni Durumlar
+
+| Durum | Açıklama |
+|-------|----------|
+| `draft` | AI tarafından üretildi, onay bekliyor |
+| `approved` | Admin veya auto_approve ile onaylandı |
+| `rejected` | Admin tarafından reddedildi |
+| `publishing` | Yayınlanıyor (PublishPostJob çalışıyor) |
+| `published` | Başarıyla paylaşıldı |
+| `publish_failed` | Yayın başarısız oldu |
 
 Her geçiş `ai_generation_logs` tablosuna loglanır.
 
 ---
 
-## 9. Sidebar Menü
+## 9. Publish Sistemi
+
+AI tarafından üretilen haberlerin kuyruk tabanlı, rate limit korumalı, çoklu hesap destekli ve loglanabilir şekilde X'te paylaşılmasını sağlayan sistemdir.
+
+### 9.1 Genel Akış
+
+```
+AI Generation (approved)
+    ↓
+PublishSchedulerService
+    ↓ Kurallar kontrolü (limit, gece modu, gap, warmup)
+publish_queue (pending, scheduled_at ile)
+    ↓ Her dakika PublishSchedulerJob
+    ↓
+PublishPostJob
+    ↓ PublishService (Python: publish_tweet.py)
+    ↓
+published
+```
+
+### 9.2 Publish Scheduler Kuralları
+
+| Kural | Açıklama |
+|-------|----------|
+| Günlük Limit | `daily_post_limit` kadar paylaşım yapılabilir |
+| Saatlik Limit | `hourly_post_limit` kadar paylaşım yapılabilir |
+| Random Delay | `min_delay_minutes` ile `max_delay_minutes` arası rastgele gecikme |
+| Minimum Gap | İki paylaşım arası en az `min_gap_minutes` süre |
+| Gece Modu | `publish_start_hour` ile `publish_end_hour` arasında paylaşım yapılır |
+| Warmup Mode | Yeni hesaplar için daha düşük günlük limit |
+
+### 9.3 Publish Hesapları
+
+`publish_accounts` tablosu ile yönetilir. Her hesap için:
+- auth_token ve ct0 bilgileri
+- Warmup için account_created_at
+- Son senkronizasyon zamanı
+- Aktif/pasif durumu
+
+### 9.4 Publish Kuyruğu
+
+`publish_queue` tablosu ile yönetilir. Durumlar:
+- `pending`: Zaman bekleniyor
+- `processing`: Yayınlanıyor
+- `published`: Başarıyla tamamlandı
+- `failed`: Başarısız oldu (retry destekli)
+
+### 9.5 Publish Geçmişi
+
+`publish_logs` tablosu ile tüm yayın işlemleri loglanır.
+
+---
+
+## 10. Sidebar Menü
 
 Yönetim paneli sidebar'ına "AI Yönetimi" bölümü eklenmiştir:
 
@@ -1701,6 +1789,13 @@ AI Yönetimi
 ├── AI Kuyruğu            /admin/ai-queue
 ├── AI Üretimleri         /admin/ai-generations
 └── Prompt Yönetimi       /admin/prompts
+
+Yayın Yönetimi
+├── Yayın Ayarları        /admin/publish-settings
+├── Yayın Testi           /admin/publish-test
+├── Hesaplar              /admin/publish-accounts
+├── Yayın Kuyruğu         /admin/publish-queue
+└── Yayın Geçmişi         /admin/publish-history
 ```
 
 ---
@@ -1790,25 +1885,25 @@ resources/views/admin/
 app/Models/RawTweet.php                  (aiGenerations ilişkisi eklendi, aiGenerationItems kaldırıldı)
 app/Models/AiQueue.php                   (generations hasMany ilişkisi)
 app/Models/AiGeneration.php              (rawTweet, sourceAccount, category ilişkileri; raw_tweet_id, provider, approved_at kolonları)
-app/Models/AiSetting.php                 (auto_approve fillable ve cast eklendi)
-app/Services/NewsCollection/AIGenerationService.php  (tweet bazlı üretime geçildi, auto_approve kontrolü eklendi)
-app/Services/NewsCollection/AIReviewService.php       (approve/reject approved_at yönetimi)
+app/Models/AiSetting.php                 (auto_approve, auto_publish, publish_delay fillable ve cast eklendi)
+app/Services/NewsCollection/AIGenerationService.php  (tweet bazlı üretime geçildi, auto_approve, auto_publish kontrolü eklendi)
+app/Services/NewsCollection/AIReviewService.php       (approve/reject approved_at yönetimi, PublishSchedulerService entegrasyonu)
 app/Services/NewsCollection/PromptResolverService.php (resolveForTweet metodu eklendi)
-app/Services/Admin/AiSettingService.php               (normalize() auto_approve eklendi)
+app/Services/Admin/AiSettingService.php               (normalize() auto_approve, auto_publish, publish_delay eklendi)
 app/Http/Controllers/Admin/AiGenerationController.php (show load ilişkileri güncellendi)
 app/Http/Controllers/Admin/AiQueueController.php      (show load ilişkileri güncellendi)
 app/Http/Controllers/Admin/RawTweetController.php     (aiGenerations ilişkisi güncellendi)
-app/Http/Requests/Admin/AiSetting/UpdateRequest.php   (auto_approve validasyonu eklendi)
-app/Queries/Admin/AiGenerationQuery.php               (tweet bazlı arama ve eager load)
-resources/views/admin/ai-settings/edit.blade.php      (auto_approve checkbox eklendi)
-resources/views/admin/ai-generations/index.blade.php  (tweet bazlı kolonlar)
-resources/views/admin/ai-generations/show.blade.php   (tweet bazlı detay, approved_at gösterimi)
+app/Http/Requests/Admin/AiSetting/UpdateRequest.php   (auto_approve, auto_publish, publish_delay validasyonu)
+app/Queries/Admin/AiGenerationQuery.php               (tweet bazlı arama, yeni durumlar: publishing, publish_failed)
+resources/views/admin/ai-settings/edit.blade.php      (auto_approve, auto_publish, publish_delay eklendi)
+resources/views/admin/ai-generations/index.blade.php  (tweet bazlı kolonlar, yeni durum badge'leri)
+resources/views/admin/ai-generations/show.blade.php   (tweet bazlı detay, approved_at, publish_failed durumu)
 resources/views/admin/ai-queue/show.blade.php          (generations listesi)
 resources/views/admin/raw-tweets/show.blade.php       (aiGenerations ilişkisi düzeltildi)
-routes/admin.php                      (AI route'ları)
-routes/console.php                    (AIQueueJob scheduler)
-resources/views/admin/layouts/partials/sidebar.blade.php (AI menüsü)
-config/news_collection.php            (gpt4free konfigürasyonu)
+routes/admin.php                      (AI route'ları, Publish route'ları)
+routes/console.php                    (AIQueueJob, PublishSchedulerJob scheduler)
+resources/views/admin/layouts/partials/sidebar.blade.php (AI menüsü, Yayın menüsü)
+config/news_collection.php            (gpt4free, twitter_api_client konfigürasyonu)
 ```
 
 ### Kaldırılan Dosyalar
@@ -1819,7 +1914,7 @@ app/Models/AiGenerationItem.php  (tablo düşürüldü, model kaldırıldı)
 
 ---
 
-# Tweet Medya Yönetimi Sistemi
+## Tweet Medya Yönetimi Sistemi
 
 Bu bölüm, tweet medya yönetiminin tam olarak nasıl çalıştığını detaylı olarak açıklar.
 

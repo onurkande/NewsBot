@@ -129,6 +129,43 @@
     </nav>
 
     <nav class="nav-section">
+        <div class="nav-label">Yayin Yonetimi</div>
+        <a class="nav-link {{ request()->routeIs('admin.publish-settings.*') ? 'is-active' : '' }}" href="{{ route('admin.publish-settings.edit') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>Yayin Ayarlari</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.publish-test.*') ? 'is-active' : '' }}" href="{{ route('admin.publish-test.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+            <span>Yayin Testi</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.publish-accounts.*') ? 'is-active' : '' }}" href="{{ route('admin.publish-accounts.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>Hesaplar</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.publish-queue.*') ? 'is-active' : '' }}" href="{{ route('admin.publish-queue.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span>Yayin Kuyrugu</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.publish-history.*') ? 'is-active' : '' }}" href="{{ route('admin.publish-history.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>Yayin Gecmisi</span>
+        </a>
+    </nav>
+
+    <nav class="nav-section">
         <div class="nav-label">Twscrape Yönetimi</div>
         <a class="nav-link {{ request()->routeIs('admin.twscrape.accounts.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.accounts.index') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -169,6 +206,12 @@
                 <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
             <span>İşlem Logları</span>
+        </a>
+        <a class="nav-link {{ request()->routeIs('admin.twscrape.tweet-test.*') ? 'is-active' : '' }}" href="{{ route('admin.twscrape.tweet-test.index') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+            <span>Tweet Testi</span>
         </a>
     </nav>
 

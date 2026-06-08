@@ -127,14 +127,20 @@
                                         'draft' => 't-unavail',
                                         'approved' => 't-info',
                                         'rejected' => 't-danger',
+                                        'publishing' => 't-warning',
                                         'published' => 't-active',
+                                        'publish_failed' => 't-danger',
+                                        'expired' => 't-unavail',
                                         default => 't-unavail',
                                     };
                                     $statusLabel = match($generation->status) {
                                         'draft' => 'Taslak',
                                         'approved' => 'Onaylandi',
                                         'rejected' => 'Reddedildi',
+                                        'publishing' => 'Yayinlaniyor',
                                         'published' => 'Yayinlandi',
+                                        'publish_failed' => 'Yayin Basarisiz',
+                                        'expired' => 'Suresi Doldu',
                                         default => $generation->status,
                                     };
                                 @endphp
