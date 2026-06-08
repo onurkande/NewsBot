@@ -75,4 +75,14 @@ class AiGeneration extends Model
     {
         return $this->hasMany(AiGenerationLog::class);
     }
+
+    public function publishQueues(): HasMany
+    {
+        return $this->hasMany(PublishQueue::class);
+    }
+
+    public function publishLogs(): HasMany
+    {
+        return $this->hasMany(PublishLog::class);
+    }
 }

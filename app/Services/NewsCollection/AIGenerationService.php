@@ -206,6 +206,16 @@ class AIGenerationService
             }
         }
 
+        if ($settings->auto_approve && $settings->auto_publish) {
+            try {
+                $this->reviewService->publish($generation);
+            } catch (\Throwable $e) {
+                $this->logService->logWarning($generation, 'Otomatik yayin planlama basarisiz oldu.', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return $generation;
     }
 

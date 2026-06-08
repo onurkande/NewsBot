@@ -55,7 +55,10 @@ class AiGenerationQuery
             'draft' => $query->where('status', 'draft'),
             'approved' => $query->where('status', 'approved'),
             'rejected' => $query->where('status', 'rejected'),
+            'publishing' => $query->where('status', 'publishing'),
             'published' => $query->where('status', 'published'),
+            'publish_failed' => $query->where('status', 'publish_failed'),
+            'expired' => $query->where('status', 'expired'),
             default => null,
         };
 
@@ -83,7 +86,10 @@ class AiGenerationQuery
             ['value' => 'draft', 'label' => 'Taslak'],
             ['value' => 'approved', 'label' => 'Onaylandi'],
             ['value' => 'rejected', 'label' => 'Reddedildi'],
+            ['value' => 'publishing', 'label' => 'Yayinlaniyor'],
             ['value' => 'published', 'label' => 'Yayinlandi'],
+            ['value' => 'publish_failed', 'label' => 'Yayin Basarisiz'],
+            ['value' => 'expired', 'label' => 'Suresi Doldu'],
         ];
     }
 
@@ -203,7 +209,7 @@ class AiGenerationQuery
         $dir = (string) Arr::get($filters, 'dir', self::DEFAULT_DIR);
         $perPage = (int) Arr::get($filters, 'per_page', self::DEFAULT_PER_PAGE);
 
-        if (! in_array($filter, ['all', 'draft', 'approved', 'rejected', 'published'], true)) {
+        if (! in_array($filter, ['all', 'draft', 'approved', 'rejected', 'publishing', 'published', 'publish_failed', 'expired'], true)) {
             $filter = 'all';
         }
 

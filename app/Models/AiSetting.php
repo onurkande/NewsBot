@@ -22,6 +22,8 @@ class AiSetting extends Model
         'opencode_model',
         'is_active',
         'auto_approve',
+        'auto_publish',
+        'publish_delay',
     ];
 
     protected function casts(): array
@@ -32,6 +34,8 @@ class AiSetting extends Model
             'concurrent_jobs' => 'integer',
             'is_active' => 'boolean',
             'auto_approve' => 'boolean',
+            'auto_publish' => 'boolean',
+            'publish_delay' => 'integer',
         ];
     }
 
@@ -47,9 +51,11 @@ class AiSetting extends Model
                 'concurrent_jobs' => 1,
                 'opencode_base_url' => 'https://opencode.ai/zen/go/v1',
                 'opencode_model' => 'deepseek-v4-flash',
-                'is_active' => true,
-                'auto_approve' => false,
-            ]);
+            'is_active' => true,
+            'auto_approve' => false,
+            'auto_publish' => false,
+            'publish_delay' => 0,
+        ]);
         }
 
         return $settings;

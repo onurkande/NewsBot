@@ -103,6 +103,17 @@
                     label="AI uretimlerini otomatik onayla"
                     :checked="old('auto_approve', $settings->auto_approve)"
                 />
+                <x-admin.form.checkbox
+                    name="auto_publish"
+                    label="Onayli uretimleri otomatik yayin kuyruguna al"
+                    :checked="old('auto_publish', $settings->auto_publish)"
+                />
+                <x-admin.form.input
+                    name="publish_delay"
+                    label="Yayin Gecikmesi (dakika)"
+                    type="number"
+                    :value="old('publish_delay', $settings->publish_delay)"
+                />
             </div>
 
             <div class="form-actions" style="margin-top: 24px;">

@@ -1,18 +1,29 @@
 import argparse
-import asyncio
 import json
+import os
+import sys
 from pathlib import Path
 
-from twscrape import API, gather
-import sys
+# Windows asyncio/env fix (sunucu ve local uyumluluk)
+if sys.platform == "win32":
+    if "SYSTEMROOT" not in os.environ:
+        os.environ["SYSTEMROOT"] = os.environ.get("WINDIR", r"C:\Windows")
+    if "WINDIR" not in os.environ:
+        os.environ["WINDIR"] = os.environ["SYSTEMROOT"]
+
+os.environ.setdefault("PYTHONUNBUFFERED", "1")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+import asyncio
+
 sys.stdout.reconfigure(encoding='utf-8')
+
+from twscrape import API, gather
 
 
 def tweet_to_dict(tweet):
-    # Fotoğraflar
     photo_urls = [photo.url for photo in tweet.media.photos]
 
-    # Videolar (variants içinde en yüksek kaliteli URL)
     video_urls = []
     for video in tweet.media.videos:
         if video.variants:
@@ -20,15 +31,16 @@ def tweet_to_dict(tweet):
             if best.url:
                 video_urls.append(best.url)
 
-    # Animasyonlu GIF'ler (video olarak döner, aynı mantık)
     animated_gif_urls = []
-    for gif in tweet.media.animated_gif:
-        if gif.variants:
+    animated_media = getattr(tweet.media, 'animated_gif', None)
+    if animated_media is None:
+        animated_media = getattr(tweet.media, 'animated', [])
+    for gif in animated_media:
+        if hasattr(gif, 'variants') and gif.variants:
             best = max(gif.variants, key=lambda v: v.bitrate or 0)
             if best.url:
                 animated_gif_urls.append(best.url)
 
-    # Birleşik medya listesi (AI_CONTEXT uyumlu)
     all_media = photo_urls + video_urls + animated_gif_urls
 
     return {

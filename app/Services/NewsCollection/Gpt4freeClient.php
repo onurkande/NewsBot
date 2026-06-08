@@ -36,11 +36,12 @@ class Gpt4freeClient
         $errorOutput = $this->sanitizeUtf8($errorOutput);
         $output = $this->sanitizeUtf8($output);
 
-        if ($errorOutput) {
-            \Illuminate\Support\Facades\Log::warning('Gpt4freeClient stderr', [
-                'stderr' => $errorOutput,
-            ]);
-        }
+        // Yoruma alindi: hata ciktilari artik loglanmayacak
+        // if ($errorOutput) {
+        //     \Illuminate\Support\Facades\Log::warning('Gpt4freeClient stderr', [
+        //         'stderr' => $errorOutput,
+        //     ]);
+        // }
 
         $result = json_decode($output, true);
 
